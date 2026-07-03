@@ -726,7 +726,8 @@ def test_compute_mturns_model(
     J_LW_21 = rng.uniform(low=0, high=10, size=nz)
     v_cb = rng.uniform(low=0, high=50, size=nz)
     ionisation_rate_G12 = rng.uniform(low=0, high=10, size=nz)
-    z_reion = rng.uniform(low=5, high=10, size=nz)
+    # z_reion must be greater than the current redshift
+    z_reion = np.maximum(redshifts, rng.uniform(low=5, high=10, size=nz))
 
     inputs = default_input_struct_ts.evolve_input_structs(
         RECOMB_MODEL="inhomogeneous",

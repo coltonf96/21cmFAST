@@ -304,6 +304,9 @@ double molecular_cooling_threshold_with_feedbacks(float z, float J_21_LW, float 
 }
 
 double reionization_feedback(float z, float Gamma_halo_HII, float z_IN) {
+    // It is not physical to have z > z_IN, but it's good to have this guard here anyway
+    if (z > z_IN) return 0;
+
     if (z_IN <= 1e-19) return 1e-40;
     return REION_SM13_M0 * pow(HALO_BIAS * Gamma_halo_HII, REION_SM13_A) *
            pow((1. + z) / 10, REION_SM13_B) *
