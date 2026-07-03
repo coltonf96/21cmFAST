@@ -112,20 +112,30 @@ Changes in defaults
 ====================
 
 Some of the default values for parameters have changed between v3 and v4. For example:
+
 * ``HII_DIM``: 200 in v3, 256 in v4
-* ``BOX_LEN``: 300 in v3, 1.5* ``HII_DIM``=384 in v4
+
+* ``BOX_LEN``: 300 in v3, :math:`1.5 \times \text{HII\_DIM} = 384` in v4
+
 * ``USE_INTERPOLATION_TABLES``: False in v3, True (``"hmf-interpolation"``) in v4
+
 * ``HII_FILTER``: k-space top-hat in v3, spherical top-hat in v4
+
 * ``M_MIN_in_Mass``: False in v3, True in v4
+
 * ``DEXM_R_OVERLAP``: 1.0 in v3 (used to be called ``R_OVERLAP_FACTOR``), 2.0 in v4
 
 In addition, the default source model that is used in v4 is ``"CHMF-SAMPLER"``, while the default
 settings in v3 corresponded to ``"E-INTEGRAL"``.
 
 The default value of some of the astrophysical parameters have also changed, for example:
-* ``F_STAR7_MINI``: -2.0 in v3, ``F_STAR10``-3* ``ALPHA_STAR``=-2.5 in v4
+
+* ``F_STAR7_MINI``: -2.0 in v3, :math:`\text{F\_STAR10} - 3 \times \text{ALPHA\_STAR} = -2.5` in v4
+
 * ``L_X``: 40.0 in v3, 40.5 in v4
-* ``L_X_MINI``: 40.0 in v3, ``L_X``=40.5 in v4
+
+* ``L_X_MINI``: 40.0 in v3, ``L_X`` = 40.5 in v4
+
 * ``R_BUBBLE_MAX``: 15.0 or 50.0 depending on ``INHOMO_RECO`` in v3, 15.0 in v4
 
 Furthermore, some new astrophysical parameters have been added in v4, most of them are related
