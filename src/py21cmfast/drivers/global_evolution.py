@@ -89,8 +89,14 @@ def compute_global_reionization_at_z(
     # TODO: is there a more clever way to estimate global z_reion?
     z_reion = -1.0 if Q_HI > 0.0 else redshift
 
-    # Global v_cb is determined according to the flag FIX_VCB_AVG
-    v_cb = inputs.astro_params.FIXED_VAVG if inputs.astro_options.FIX_VCB_AVG else 0.0
+    # Global v_cb is determined according to V_CB_MODEL
+    match inputs.matter_options.V_CB_MODEL:
+        case "NONE":
+            v_cb = 0.0
+        case "AVG-AUTO" | "FLUCTS":
+            v_cb = inputs.cosmo_tables.V_CB_AVG
+        case "AVG-DEBUG":
+            v_cb = inputs.astro_params.V_CB_AVG_DEBUG
 
     M_turn_a, M_turn_m = compute_mturns(
         inputs=inputs,
@@ -116,7 +122,8 @@ def compute_global_reionization_at_z(
             .with_value(val=val * np.ones(shape)),
         )
     box.log10_Mturnover_ave = np.log10(M_turn_a)
-    box.log10_Mturnover_MINI_ave = np.log10(M_turn_m)
+    if M_turn_m is not None:
+        box.log10_Mturnover_MINI_ave = np.log10(M_turn_m)
     return box
 
 
