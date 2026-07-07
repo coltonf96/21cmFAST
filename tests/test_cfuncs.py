@@ -6,25 +6,11 @@ import matplotlib as mpl
 import numpy as np
 import pytest
 from hmf import MassFunction
+from hmf.mass_function.fitting_functions import Yung24
 from scipy import optimize
 
 import py21cmfast as p21c
 from py21cmfast.wrapper import cfuncs as cf
-
-YUNG24_PHYSICAL_PARAMS = {
-    "A_0": 0.13765772,
-    "A_1": -0.01003821,
-    "A_2": 0.00102964,
-    "a_0": 1.06641384,
-    "a_1": 0.02475576,
-    "a_2": -0.00283342,
-    "b_0": 4.86693806,
-    "b_1": 0.09212356,
-    "b_2": -0.01426283,
-    "c_0": 1.19837952,
-    "c_1": -0.00142967,
-    "c_2": -0.00033074,
-}
 
 
 @pytest.fixture(scope="module")
@@ -372,31 +358,13 @@ def test_new_hmf_matches_reference(default_input_struct, hmf_model, ps_model):
         sigma = sigma0 * growth
         dlnsdlnm = -masses * dsigmasqdm / (2 * sigma0**2)
 
-        # TODO: Switch this branch to using hmf once Yung24 is merged there.
-        z = redshift
-        a_z = (
-            YUNG24_PHYSICAL_PARAMS["a_0"]
-            + YUNG24_PHYSICAL_PARAMS["a_1"] * z
-            + YUNG24_PHYSICAL_PARAMS["a_2"] * z**2
+        yung24 = Yung24(
+            nu2=(delta_c / sigma) ** 2,
+            z=redshift,
+            delta_c=delta_c,
+            units="physical",
         )
-        b_z = (
-            YUNG24_PHYSICAL_PARAMS["b_0"]
-            + YUNG24_PHYSICAL_PARAMS["b_1"] * z
-            + YUNG24_PHYSICAL_PARAMS["b_2"] * z**2
-        )
-        c_z = (
-            YUNG24_PHYSICAL_PARAMS["c_0"]
-            + YUNG24_PHYSICAL_PARAMS["c_1"] * z
-            + YUNG24_PHYSICAL_PARAMS["c_2"] * z**2
-        )
-        A_z = (
-            YUNG24_PHYSICAL_PARAMS["A_0"]
-            + YUNG24_PHYSICAL_PARAMS["A_1"] * z
-            + YUNG24_PHYSICAL_PARAMS["A_2"] * z**2
-        )
-        f_sigma = A_z * ((sigma / b_z) ** (-a_z) + 1) * np.exp(-c_z / sigma**2)
-
-        expected = f_sigma * dlnsdlnm / masses
+        expected = yung24.fsigma * dlnsdlnm / masses
 
         np.testing.assert_allclose(hmf_vals, expected, rtol=1e-6)
 
