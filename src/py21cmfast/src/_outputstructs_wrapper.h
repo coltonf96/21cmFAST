@@ -71,6 +71,16 @@ typedef struct XraySourceBox {
     float *filtered_sfr_lw;
     float *filtered_sfr_mini_lw;
 
+    // TODO: these arrays are defined as double, but should be float - see
+    // https://github.com/21cmfast/21cmFAST/issues/744
+    double *dxheat_dt;
+    double *dxion_dt;
+    double *dxlya_dt;
+    double *dstarlya_dt;
+    double *dstarlya_cont_dt;
+    double *dstarlya_inj_dt;
+    double *dstarLW_dt;
+
     double *mean_log10_Mcrit_LW;
     double *mean_sfr;
     double *mean_sfr_mini;

@@ -705,7 +705,29 @@ def compute_spin_temperature(
                 f"xray_source_box is required for SOURCE_MODEL= {inputs.matter_options.SOURCE_MODEL}"
             )
         else:
-            xray_source_box = XraySourceBox.dummy()
+            # In case of the old Eulerian source model, we use the 3D arrays of XraySourceBox in the C code of SpinTemperatureBox.c.
+            # TODO: this logic will have to be changed in the future once https://github.com/21cmfast/21cmFAST/issues/668 is solved
+            # (and then xray_source_box will never be None).
+            xray_source_box = XraySourceBox.new(redshift=redshift, inputs=inputs)
+            shape = xray_source_box.dxheat_dt.shape
+            shape_4D = xray_source_box.filtered_sfr.shape
+
+            required_arrays = TsBox.new(
+                redshift=0, inputs=inputs
+            ).get_required_input_arrays(xray_source_box)
+
+            # Set the arrays to zero, or according to initial_density if the arrays are density fields
+            for array in required_arrays:
+                # TODO: the 3D arrays below are defined as np.float64, but should be np.float32 - see https://github.com/21cmfast/21cmFAST/issues/744
+                array_shape = shape_4D if "filtered" in array else shape
+                dtype = np.float32 if "filtered" in array else np.float64
+                setattr(
+                    xray_source_box,
+                    array,
+                    Array(shape=array_shape, dtype=dtype)
+                    .initialize()
+                    .with_value(val=np.zeros(array_shape)),
+                )
 
     # Set up the box without computing anything.
     box = TsBox.new(

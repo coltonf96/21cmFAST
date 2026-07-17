@@ -42,12 +42,6 @@ double *dstarlya_cont_dt_prefactor_MINI, *dstarlya_inj_dt_prefactor_MINI;
 // boxes to hold stellar fraction integrals (Fcoll or SFRD)
 float *del_fcoll_Rct, *del_fcoll_Rct_MINI;
 
-// radiative term boxes which are summed over R
-double *dxheat_dt_box, *dxion_source_dt_box, *dxlya_dt_box, *dstarlya_dt_box;
-double *dstarlyLW_dt_box, *dstarlyLW_dt_box_MINI;
-double *dstarlya_cont_dt_box, *dstarlya_inj_dt_box;
-double *dstarlya_cont_dt_box_MINI, *dstarlya_inj_dt_box_MINI;
-
 // x_e interpolation boxes / arrays (not a RGI)
 float *inverse_val_box;
 int *m_xHII_low_box;
@@ -112,20 +106,6 @@ void alloc_global_arrays() {
         freq_int_lya_tbl_diff[i] = (double *)calloc(astro_params_global->N_STEP_TS, sizeof(double));
     }
     inverse_diff = (float *)calloc(x_int_NXHII, sizeof(float));
-    // actual heating term boxes
-    if (astro_options_global->USE_X_RAY_HEATING) {
-        dxheat_dt_box = (double *)calloc(HII_TOT_NUM_PIXELS, sizeof(double));
-    }
-    dxion_source_dt_box = (double *)calloc(HII_TOT_NUM_PIXELS, sizeof(double));
-    dxlya_dt_box = (double *)calloc(HII_TOT_NUM_PIXELS, sizeof(double));
-    dstarlya_dt_box = (double *)calloc(HII_TOT_NUM_PIXELS, sizeof(double));
-    if (astro_options_global->USE_LYA_HEATING) {
-        dstarlya_cont_dt_box = (double *)calloc(HII_TOT_NUM_PIXELS, sizeof(double));
-        dstarlya_inj_dt_box = (double *)calloc(HII_TOT_NUM_PIXELS, sizeof(double));
-    }
-    if (astro_options_global->USE_MINI_HALOS) {
-        dstarlyLW_dt_box = (double *)calloc(HII_TOT_NUM_PIXELS, sizeof(double));
-    }
 
     // spectral stuff
     dstarlya_dt_prefactor = calloc(astro_params_global->N_STEP_TS, sizeof(double));
@@ -224,21 +204,6 @@ void free_ts_global_arrays() {
             free(dstarlya_inj_dt_prefactor_MINI);
             free(dstarlya_cont_dt_prefactor_MINI);
         }
-    }
-
-    // boxes
-    if (astro_options_global->USE_X_RAY_HEATING) {
-        free(dxheat_dt_box);
-    }
-    free(dxion_source_dt_box);
-    free(dxlya_dt_box);
-    free(dstarlya_dt_box);
-    if (astro_options_global->USE_MINI_HALOS) {
-        free(dstarlyLW_dt_box);
-    }
-    if (astro_options_global->USE_LYA_HEATING) {
-        free(dstarlya_cont_dt_box);
-        free(dstarlya_inj_dt_box);
     }
 
     // interpolation helpers
@@ -1146,7 +1111,7 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
     output.Tk = Tk;
     output.J_21_LW = astro_options_global->USE_MINI_HALOS ? rad->dstarLW_dt : 0.;
 
-    double J_alpha_tot = rad->dstarlya_dt + rad->dxlya_dt;  // not really d/dz, but the lya flux
+    double J_alpha_tot = rad->dstarlya_dt + rad->dxlya_dt;
 
     // JD: I'm leaving these as comments in case I'm wrong, but there's NO WAY a compiler doesn't
     // know the fastest way to invert a number
@@ -1208,8 +1173,7 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
 
 /*
     This function calculates the radiation fields (x-ray heating rate, photoionization rate, lyman
-   alpha flux, etc.). This is done by filling the global arrays in this module, e.g. dxheat_dt_box,
-   dxion_dt_box, dxlya_dt_box, etc.
+   alpha flux, etc.). This is done by filling the arrays in XraySourceBox.
 
     TODO: it makes more sense to move this function to XraySourceBox.c, but this module is currently
    not called when using the old Eulerian source models, so we keep it here for now as we can use
@@ -1217,7 +1181,7 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
    https://github.com/21cmfast/21cmFAST/issues/668 is solved.
 */
 void get_radition_fields(float redshift, float prev_redshift, float perturbed_field_redshift,
-                         PerturbedField *perturbed_field, XraySourceBox *source_box,
+                         short cleanup, PerturbedField *perturbed_field, XraySourceBox *source_box,
                          TsBox *previous_spin_temp, InitialConditions *ini_boxes,
                          TsBox *this_spin_temp) {
     debug_printed = 0;
@@ -1346,19 +1310,6 @@ void get_radition_fields(float redshift, float prev_redshift, float perturbed_fi
             m_xHII_low_box[box_ct] = locate_xHII_index(xHII_call);
             inverse_val_box[box_ct] = (xHII_call - x_int_XHII[m_xHII_low_box[box_ct]]) *
                                       inverse_diff[m_xHII_low_box[box_ct]];
-
-            // initialise += boxes (memory sometimes re-used)
-            if (astro_options_global->USE_X_RAY_HEATING) {
-                dxheat_dt_box[box_ct] = 0.;
-            }
-            dxion_source_dt_box[box_ct] = 0.;
-            dxlya_dt_box[box_ct] = 0.;
-            dstarlya_dt_box[box_ct] = 0.;
-            if (astro_options_global->USE_MINI_HALOS) dstarlyLW_dt_box[box_ct] = 0.;
-            if (astro_options_global->USE_LYA_HEATING) {
-                dstarlya_cont_dt_box[box_ct] = 0.;
-                dstarlya_inj_dt_box[box_ct] = 0.;
-            }
         }
     }
 
@@ -1480,7 +1431,9 @@ void get_radition_fields(float redshift, float prev_redshift, float perturbed_fi
             {
                 // private variables
                 int xidx;
-                double ival, sfr_term, xray_sfr;
+                double ival;
+                double freq_int_heat, freq_int_ion, freq_int_lya;
+                double sfr_term, xray_sfr;
                 double sfr_term_mini = 0;
                 double sfr_term_lw, sfr_term_mini_lw;
 #pragma omp for
@@ -1536,30 +1489,40 @@ void get_radition_fields(float redshift, float prev_redshift, float perturbed_fi
                             sfr_term_lw = sfr_term;
                             sfr_term_mini_lw = sfr_term_mini;
                         }
-                        dstarlyLW_dt_box[box_ct] +=
+                    }
+
+                    // Evaluate the frequency integrals for this shell (R_ct) and cell (box_ct) via
+                    // linear interpolation
+                    xidx = m_xHII_low_box[box_ct];
+                    ival = inverse_val_box[box_ct];
+                    freq_int_heat =
+                        freq_int_heat_tbl_diff[xidx][R_ct] * ival + freq_int_heat_tbl[xidx][R_ct];
+                    freq_int_ion =
+                        freq_int_ion_tbl_diff[xidx][R_ct] * ival + freq_int_ion_tbl[xidx][R_ct];
+                    freq_int_lya =
+                        freq_int_lya_tbl_diff[xidx][R_ct] * ival + freq_int_lya_tbl[xidx][R_ct];
+
+                    // Evaluate the radiation fields by adding the contribution from this shell
+                    // (R_ct) This implements trapezoidal integration over the shells
+                    if (astro_options_global->USE_X_RAY_HEATING) {
+                        source_box->dxheat_dt[box_ct] += xray_sfr * freq_int_heat;
+                    }
+                    source_box->dxion_dt[box_ct] += xray_sfr * freq_int_ion;
+                    source_box->dxlya_dt[box_ct] += xray_sfr * freq_int_lya;
+                    source_box->dstarlya_dt[box_ct] += sfr_term * dstarlya_dt_prefactor[R_ct] +
+                                                       sfr_term_mini * starlya_factor_mini;
+                    if (astro_options_global->USE_MINI_HALOS) {
+                        source_box->dstarLW_dt[box_ct] +=
                             sfr_term_lw * dstarlyLW_dt_prefactor[R_ct] +
                             sfr_term_mini_lw * dstarlyLW_dt_prefactor_MINI[R_ct];
                     }
-                    xidx = m_xHII_low_box[box_ct];
-                    ival = inverse_val_box[box_ct];
-                    if (astro_options_global->USE_X_RAY_HEATING) {
-                        dxheat_dt_box[box_ct] +=
-                            xray_sfr * (freq_int_heat_tbl_diff[xidx][R_ct] * ival +
-                                        freq_int_heat_tbl[xidx][R_ct]);
-                    }
-                    dxion_source_dt_box[box_ct] +=
-                        xray_sfr *
-                        (freq_int_ion_tbl_diff[xidx][R_ct] * ival + freq_int_ion_tbl[xidx][R_ct]);
-                    dxlya_dt_box[box_ct] += xray_sfr * (freq_int_lya_tbl_diff[xidx][R_ct] * ival +
-                                                        freq_int_lya_tbl[xidx][R_ct]);
-                    dstarlya_dt_box[box_ct] += sfr_term * dstarlya_dt_prefactor[R_ct] +
-                                               sfr_term_mini * starlya_factor_mini;
                     if (astro_options_global->USE_LYA_HEATING) {
-                        dstarlya_cont_dt_box[box_ct] +=
+                        source_box->dstarlya_cont_dt[box_ct] +=
                             sfr_term * dstarlya_cont_dt_prefactor[R_ct] +
                             sfr_term_mini * lyacont_factor_mini;
-                        dstarlya_inj_dt_box[box_ct] += sfr_term * dstarlya_inj_dt_prefactor[R_ct] +
-                                                       sfr_term_mini * lyainj_factor_mini;
+                        source_box->dstarlya_inj_dt[box_ct] +=
+                            sfr_term * dstarlya_inj_dt_prefactor[R_ct] +
+                            sfr_term_mini * lyainj_factor_mini;
                     }
 
                     // I cannot check the integral if we are using the halo field since delNL0
@@ -1606,21 +1569,23 @@ void get_radition_fields(float redshift, float prev_redshift, float perturbed_fi
                                     avg_fix_term_MINI * astro_params_global->F_STAR7_MINI);
 
                         if (astro_options_global->USE_X_RAY_HEATING) {
-                            LOG_SUPER_DEBUG("xh %.2e | xi %.2e | xl %.2e | sl %.2e",
-                                            dxheat_dt_box[box_ct] / astro_params_global->L_X,
-                                            dxion_source_dt_box[box_ct] / astro_params_global->L_X,
-                                            dxlya_dt_box[box_ct] / astro_params_global->L_X,
-                                            dstarlya_dt_box[box_ct]);
+                            LOG_SUPER_DEBUG(
+                                "xh %.2e | xi %.2e | xl %.2e | sl %.2e",
+                                source_box->dxheat_dt[box_ct] / astro_params_global->L_X,
+                                source_box->dxion_dt[box_ct] / astro_params_global->L_X,
+                                source_box->dxlya_dt[box_ct] / astro_params_global->L_X,
+                                source_box->dstarlya_dt[box_ct]);
                         } else {
                             LOG_SUPER_DEBUG("xi %.2e | xl %.2e | sl %.2e",
-                                            dxion_source_dt_box[box_ct] / astro_params_global->L_X,
-                                            dxlya_dt_box[box_ct] / astro_params_global->L_X,
-                                            dstarlya_dt_box[box_ct]);
+                                            source_box->dxion_dt[box_ct] / astro_params_global->L_X,
+                                            source_box->dxlya_dt[box_ct] / astro_params_global->L_X,
+                                            source_box->dstarlya_dt[box_ct]);
                         }
 
                         if (astro_options_global->USE_LYA_HEATING)
-                            LOG_SUPER_DEBUG("ct %.2e | ij %.2e", dstarlya_cont_dt_box[box_ct],
-                                            dstarlya_inj_dt_box[box_ct]);
+                            LOG_SUPER_DEBUG("ct %.2e | ij %.2e",
+                                            source_box->dstarlya_cont_dt[box_ct],
+                                            source_box->dstarlya_inj_dt[box_ct]);
                     }
 #endif
                 }  // end of box_ct loop
@@ -1642,6 +1607,9 @@ void get_radition_fields(float redshift, float prev_redshift, float perturbed_fi
         fftwf_forget_wisdom();
         fftwf_cleanup_threads();
         fftwf_cleanup();
+    }
+    if (cleanup) {
+        free_ts_global_arrays();
     }
 }
 
@@ -1672,8 +1640,9 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
         struct spintemp_from_sfr_prefactors zp_consts;
         set_zp_consts(redshift, &zp_consts);
 
-        get_radition_fields(redshift, prev_redshift, perturbed_field_redshift, perturbed_field,
-                            source_box, previous_spin_temp, ini_boxes, this_spin_temp);
+        get_radition_fields(redshift, prev_redshift, perturbed_field_redshift, cleanup,
+                            perturbed_field, source_box, previous_spin_temp, ini_boxes,
+                            this_spin_temp);
 
         index_huge box_ct;
         double growth_factor_z, growth_factor_zp;
@@ -1707,25 +1676,25 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
 
                 // Add prefactors that don't depend on R
                 if (astro_options_global->USE_X_RAY_HEATING) {
-                    rad.dxheat_dt =
-                        dxheat_dt_box[box_ct] * zp_consts.xray_prefactor * zp_consts.volunit_inv;
+                    rad.dxheat_dt = source_box->dxheat_dt[box_ct] * zp_consts.xray_prefactor *
+                                    zp_consts.volunit_inv;
                 }
                 rad.dxion_dt =
-                    dxion_source_dt_box[box_ct] * zp_consts.xray_prefactor * zp_consts.volunit_inv;
+                    source_box->dxion_dt[box_ct] * zp_consts.xray_prefactor * zp_consts.volunit_inv;
                 // 2 density terms from downscattering absorbers
-                rad.dxlya_dt = dxlya_dt_box[box_ct] * zp_consts.xray_prefactor *
+                rad.dxlya_dt = source_box->dxlya_dt[box_ct] * zp_consts.xray_prefactor *
                                zp_consts.volunit_inv * zp_consts.Nb_zp * (1 + curr_delta);
-                rad.dstarlya_dt =
-                    dstarlya_dt_box[box_ct] * zp_consts.lya_star_prefactor * zp_consts.volunit_inv;
+                rad.dstarlya_dt = source_box->dstarlya_dt[box_ct] * zp_consts.lya_star_prefactor *
+                                  zp_consts.volunit_inv;
                 rad.delta = curr_delta;
                 if (astro_options_global->USE_MINI_HALOS) {
-                    rad.dstarLW_dt = dstarlyLW_dt_box[box_ct] * zp_consts.lya_star_prefactor *
+                    rad.dstarLW_dt = source_box->dstarLW_dt[box_ct] * zp_consts.lya_star_prefactor *
                                      zp_consts.volunit_inv * physconst.h_p * 1e21;
                 }
                 if (astro_options_global->USE_LYA_HEATING) {
-                    rad.dstarlya_cont_dt = dstarlya_cont_dt_box[box_ct] *
+                    rad.dstarlya_cont_dt = source_box->dstarlya_cont_dt[box_ct] *
                                            zp_consts.lya_star_prefactor * zp_consts.volunit_inv;
-                    rad.dstarlya_inj_dt = dstarlya_inj_dt_box[box_ct] *
+                    rad.dstarlya_inj_dt = source_box->dstarlya_inj_dt[box_ct] *
                                           zp_consts.lya_star_prefactor * zp_consts.volunit_inv;
                 }
                 rad.prev_Ts = previous_spin_temp->spin_temperature[box_ct];
@@ -1799,27 +1768,18 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                     LOG_ERROR(
                         "Estimated spin temperature is either infinite of NaN!"
                         "idx %llu delta %.3e dxheat %.3e dxion %.3e dxlya %.3e dstarlya %.3e",
-                        box_ct, perturbed_field->density[box_ct], dxheat_dt_box[box_ct],
-                        dxion_source_dt_box[box_ct], dxlya_dt_box[box_ct], dstarlya_dt_box[box_ct]);
+                        box_ct, perturbed_field->density[box_ct], source_box->dxheat_dt[box_ct],
+                        source_box->dxion_dt[box_ct], source_box->dxlya_dt[box_ct],
+                        source_box->dstarlya_dt[box_ct]);
                 } else {
                     LOG_ERROR(
                         "Estimated spin temperature is either infinite of NaN!"
                         "idx %llu delta %.3e dxion %.3e dxlya %.3e dstarlya %.3e",
-                        box_ct, perturbed_field->density[box_ct], dxion_source_dt_box[box_ct],
-                        dxlya_dt_box[box_ct], dstarlya_dt_box[box_ct]);
+                        box_ct, perturbed_field->density[box_ct], source_box->dxion_dt[box_ct],
+                        source_box->dxlya_dt[box_ct], source_box->dstarlya_dt[box_ct]);
                 }
                 Throw(InfinityorNaNError);
             }
-        }
-        // TODO: it makes more sense to call the function below in get_radition_fields(),
-        // the problem is that we still use in ComputeTsBox() the global arrays for theradiation
-        // field boxes (dxheat_dt_box, dxion_source_dt_box, etc.). In the new Lagrangian source
-        // model, we don't really need to keep these boxes, because we can get them from
-        // XraySourceBox. However, in the Eulerian source model, we still need to keep them, because
-        // we don't use XraySourceBox. This issue can be fixed by solving
-        // https://github.com/21cmfast/21cmFAST/issues/668.
-        if (cleanup) {
-            free_ts_global_arrays();
         }
     }  // End of try
     Catch(status) { return (status); }
