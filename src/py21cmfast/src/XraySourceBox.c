@@ -118,8 +118,6 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
     fftwf_free(unfiltered_box);
 }
 
-// fill a box[R_ct][box_ct] array for use in TS by filtering on different scales and storing results
-// Similar to fill_Rbox_table but called using different redshifts for each scale
 int UpdateXraySourceBox(HaloBox *halobox, double R_inner, double R_outer, int R_ct, double R_star,
                         XraySourceBox *source_box) {
     int status, filter_type;
