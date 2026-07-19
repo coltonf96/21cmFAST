@@ -697,10 +697,27 @@ void init_first_Ts(TsBox *box, float *dens, float z, float zp) {
     }
 }
 
+typedef struct RadiationFieldsSetup {
+    double *ave_log10_MturnLW;
+    double inverse_growth_factor_z;
+    double x_e_ave_p;
+    double Q_HI_zp;
+    int NO_LIGHT;
+    // TODO: remove these fields below when https://github.com/21cmfast/21cmFAST/issues/668 is fixed
+    // (they are needed only for the Eulerian source model)
+    ScalingConstants sc;
+    fftwf_complex *delta_unfiltered;
+    fftwf_complex *log10_Mcrit_LW_unfiltered;
+    double *ave_dens;
+    double *min_log10_MturnLW;
+    double *max_log10_MturnLW;
+    double *mean_sfr_zpp;
+    double *mean_sfr_zpp_mini;
+} RadiationFieldsSetup;
+
 // calculate the global properties used for making the frequency integrals,
 //   used for filling factor, ST_OVER_PS, and NO_LIGHT
-int global_reion_properties(double zp, double x_e_ave, double *log10_Mcrit_LW_ave,
-                            double *mean_sfr_zpp, double *mean_sfr_zpp_mini, double *Q_HI) {
+int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
     int R_ct;
     double sum_nion = 0, sum_nion_mini = 0;
     double zpp;
@@ -748,8 +765,8 @@ int global_reion_properties(double zp, double x_e_ave, double *log10_Mcrit_LW_av
     //      #470 is fixed!
     sum_nion = EvaluateNionTs(zp, log10(sc.mturn_acg_homogeneous), &sc);
     if (astro_options_global->USE_MINI_HALOS) {
-        sum_nion_mini =
-            EvaluateNionTs_MINI(zp, log10(sc.mturn_acg_homogeneous), log10_Mcrit_LW_ave[0], &sc);
+        sum_nion_mini = EvaluateNionTs_MINI(zp, log10(sc.mturn_acg_homogeneous),
+                                            rad_setup->ave_log10_MturnLW[0], &sc);
     }
 
     LOG_DEBUG("nion zp = %.3e (%.3e MINI)", sum_nion, sum_nion_mini);
@@ -766,26 +783,32 @@ int global_reion_properties(double zp, double x_e_ave, double *log10_Mcrit_LW_av
     }
 
     // NOTE: only used without MASS_DEPENDENT_ZETA
-    *Q_HI = 1 - (ION_EFF_FACTOR * sum_nion + ION_EFF_FACTOR_MINI * sum_nion_mini) / (1.0 - x_e_ave);
+    rad_setup->Q_HI_zp = 1 - (ION_EFF_FACTOR * sum_nion + ION_EFF_FACTOR_MINI * sum_nion_mini) /
+                                 (1.0 - rad_setup->x_e_ave_p);
 
     // Initialise freq tables & prefactors (x_e by R tables)
     if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL) ||
         !matter_options_global->MINIMIZE_MEMORY) {
-        // Now global SFRD at (R_ct) for the mean fixing
-        for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
-            zpp = zpp_for_evolve_list[R_ct];
-            // TODO: At the moment, inhomogeneous reionization feedback cannot be accounted in
-            // SpinTemperatureBox.c,
-            //      see https://github.com/21cmfast/21cmFAST/issues/470. Thus, we use the
-            //      homogeneous (feedback-free) ACG turnover mass. It is important to remember to
-            //      fix this when issue #470 is fixed!
-            mean_sfr_zpp[R_ct] = EvaluateSFRD(zpp, log10(sc.mturn_acg_homogeneous), &sc);
-            if (astro_options_global->USE_MINI_HALOS) {
-                mean_sfr_zpp_mini[R_ct] = EvaluateSFRD_MINI(zpp, log10(sc.mturn_acg_homogeneous),
-                                                            log10_Mcrit_LW_ave[R_ct], &sc);
+        if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+            // Now global SFRD at (R_ct) for the mean fixing
+            for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
+                zpp = zpp_for_evolve_list[R_ct];
+                // TODO: At the moment, inhomogeneous reionization feedback cannot be accounted in
+                // SpinTemperatureBox.c,
+                //      see https://github.com/21cmfast/21cmFAST/issues/470. Thus, we use the
+                //      homogeneous (feedback-free) ACG turnover mass. It is important to remember
+                //      to fix this when issue #470 is fixed!
+                rad_setup->mean_sfr_zpp[R_ct] =
+                    EvaluateSFRD(zpp, log10(sc.mturn_acg_homogeneous), &sc);
+                if (astro_options_global->USE_MINI_HALOS) {
+                    rad_setup->mean_sfr_zpp_mini[R_ct] =
+                        EvaluateSFRD_MINI(zpp, log10(sc.mturn_acg_homogeneous),
+                                          rad_setup->ave_log10_MturnLW[R_ct], &sc);
+                }
             }
         }
-        fill_freqint_tables(zp, x_e_ave, *Q_HI, log10_Mcrit_LW_ave, 0, &sc);
+        fill_freqint_tables(zp, rad_setup->x_e_ave_p, rad_setup->Q_HI_zp,
+                            rad_setup->ave_log10_MturnLW, 0, &sc);
     }
 
     return sum_nion + sum_nion_mini > 1e-15 ? 0 : 1;  // NO_LIGHT returned
@@ -1172,43 +1195,46 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
 }
 
 /*
-    This function calculates the radiation fields (x-ray heating rate, photoionization rate, lyman
-   alpha flux, etc.). This is done by filling the arrays in XraySourceBox.
+    This function calculates calculates R-indpendent quantities that are useful for the computation
+   of the radiation fields (x-ray heating rate, photoionization rate, lyman alpha flux, etc.). This
+   is done by setting the fields in the input rad_setup.
 
     TODO: it makes more sense to move this function to XraySourceBox.c, but this module is currently
    not called when using the old Eulerian source models, so we keep it here for now as we can use
    the global arrays for both Eulerian and Lagrangian source models. This will be fixed when
    https://github.com/21cmfast/21cmFAST/issues/668 is solved.
 */
-void get_radition_fields(float redshift, float prev_redshift, float perturbed_field_redshift,
-                         short cleanup, PerturbedField *perturbed_field, XraySourceBox *source_box,
-                         TsBox *previous_spin_temp, InitialConditions *ini_boxes,
-                         TsBox *this_spin_temp) {
+void setup_radiation_fields(float redshift, float perturbed_field_redshift,
+                            PerturbedField *perturbed_field, XraySourceBox *source_box,
+                            TsBox *previous_spin_temp, InitialConditions *ini_boxes,
+                            TsBox *this_spin_temp, RadiationFieldsSetup *rad_setup) {
     debug_printed = 0;
     int R_ct;
     index_huge box_ct;
-    double x_e_ave_p, Tk_ave_p;
-    double growth_factor_z;
-    double inverse_growth_factor_z;
 
     // allocate the global arrays we always use
     if (!TsInterpArraysInitialised) {
         alloc_global_arrays();
     }
-    ScalingConstants sc;
-    set_scaling_constants(redshift, &sc, false);
-
-    growth_factor_z = dicke(perturbed_field_redshift);
-    inverse_growth_factor_z = 1. / growth_factor_z;
+    if (astro_options_global->USE_MINI_HALOS) {
+        rad_setup->ave_log10_MturnLW = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+    }
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+        rad_setup->delta_unfiltered =
+            (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
+        rad_setup->ave_dens = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+        rad_setup->mean_sfr_zpp = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+        if (astro_options_global->USE_MINI_HALOS) {
+            rad_setup->log10_Mcrit_LW_unfiltered =
+                (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
+            rad_setup->min_log10_MturnLW = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+            rad_setup->max_log10_MturnLW = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+            rad_setup->mean_sfr_zpp_mini = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+        }
+    }
 
     // setup the R_ct 1D arrays
     setup_z_edges(redshift);
-
-    // now that we have the sigma table we can assign the sigma arrays
-    for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
-        sigma_min[R_ct] = EvaluateSigma(log(M_min_R[R_ct]));
-        sigma_max[R_ct] = EvaluateSigma(log(M_max_R[R_ct]));
-    }
 
     calculate_spectral_factors(redshift);
 
@@ -1216,82 +1242,70 @@ void get_radition_fields(float redshift, float prev_redshift, float perturbed_fi
     // Since we use the average Mturn for the global tables this must be done first
     // NOTE: The filtered Mturn for the previous snapshot is used for Fcoll at ALL zpp
     //   regardless of distance from current reshift, this also goes for the averages
-    double ave_log10_MturnLW[astro_params_global->N_STEP_TS];
-    double min_log10_MturnLW[astro_params_global->N_STEP_TS];
-    double max_log10_MturnLW[astro_params_global->N_STEP_TS];
-    double ave_dens[astro_params_global->N_STEP_TS];
-    fftwf_complex *log10_Mcrit_LW_unfiltered = NULL;
-    fftwf_complex *delta_unfiltered = NULL;
-    double log10_Mcrit_limit;
-
     if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+        double log10_Mcrit_limit;
+        // now that we have the sigma table we can assign the sigma arrays
+        for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
+            sigma_min[R_ct] = EvaluateSigma(log(M_min_R[R_ct]));
+            sigma_max[R_ct] = EvaluateSigma(log(M_max_R[R_ct]));
+        }
+        set_scaling_constants(redshift, &rad_setup->sc, false);
+        rad_setup->inverse_growth_factor_z = 1. / dicke(perturbed_field_redshift);
         // copy over to FFTW, do the forward FFTs and apply constants
-        delta_unfiltered =
-            (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
-        if (astro_options_global->USE_MINI_HALOS)
-            log10_Mcrit_LW_unfiltered =
-                (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
-
         LOG_ULTRA_DEBUG("Starting unfiltered boxes.");
         prepare_filter_boxes(redshift, perturbed_field->density, ini_boxes->lowres_vcb,
-                             previous_spin_temp->J_21_LW, delta_unfiltered,
-                             log10_Mcrit_LW_unfiltered, &sc);
+                             previous_spin_temp->J_21_LW, rad_setup->delta_unfiltered,
+                             rad_setup->log10_Mcrit_LW_unfiltered, &rad_setup->sc);
         LOG_ULTRA_DEBUG("Prepared unfiltered boxes.");
         // fill the filtered boxes if we are storing them all
         if (!matter_options_global->MINIMIZE_MEMORY) {
-            fill_Rbox_table(delNL0, delta_unfiltered, R_values, astro_params_global->N_STEP_TS, -1,
-                            inverse_growth_factor_z, min_densities, ave_dens, max_densities);
+            fill_Rbox_table(delNL0, rad_setup->delta_unfiltered, R_values,
+                            astro_params_global->N_STEP_TS, -1, rad_setup->inverse_growth_factor_z,
+                            min_densities, rad_setup->ave_dens, max_densities);
             LOG_ULTRA_DEBUG("Filled density filtered boxes.");
             if (astro_options_global->USE_MINI_HALOS) {
                 // NOTE: we are using previous_zp LW threshold for all zpp, inconsistent with
                 // the halo model minimum turnover NOTE: should be zpp_max?
                 log10_Mcrit_limit =
                     log10(molecular_cooling_threshold_with_feedbacks(redshift, 0., 0.));
-                fill_Rbox_table(log10_Mcrit_LW, log10_Mcrit_LW_unfiltered, R_values,
+                fill_Rbox_table(log10_Mcrit_LW, rad_setup->log10_Mcrit_LW_unfiltered, R_values,
                                 astro_params_global->N_STEP_TS, log10_Mcrit_limit, 1,
-                                min_log10_MturnLW, ave_log10_MturnLW, max_log10_MturnLW);
+                                rad_setup->min_log10_MturnLW, rad_setup->ave_log10_MturnLW,
+                                rad_setup->max_log10_MturnLW);
             }
         } else {
             // we still need the average Mturn at R_ct==0 for NO_LIGHT
             // TODO: Remove this and come up with a better way to get NO_LIGHT
             if (astro_options_global->USE_MINI_HALOS) {
-                fill_Rbox_table(log10_Mcrit_LW, log10_Mcrit_LW_unfiltered, &(R_values[0]), 1, 0, 1,
-                                &min_log10_MturnLW[0], &ave_log10_MturnLW[0],
-                                &max_log10_MturnLW[0]);
+                fill_Rbox_table(log10_Mcrit_LW, rad_setup->log10_Mcrit_LW_unfiltered,
+                                &(R_values[0]), 1, 0, 1, &rad_setup->min_log10_MturnLW[0],
+                                &rad_setup->ave_log10_MturnLW[0], &rad_setup->max_log10_MturnLW[0]);
             }
         }
         LOG_DEBUG("Constructed filtered boxes.");
     } else if (astro_options_global->USE_MINI_HALOS) {
         for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
-            ave_log10_MturnLW[R_ct] = source_box->mean_log10_Mcrit_LW[R_ct];
+            rad_setup->ave_log10_MturnLW[R_ct] = source_box->mean_log10_Mcrit_LW[R_ct];
         }
     }
 
-    x_e_ave_p = Tk_ave_p = 0.0;
+    double x_e_ave_p = 0.0;
 #pragma omp parallel num_threads(simulation_options_global->N_THREADS)
     {
-#pragma omp for reduction(+ : x_e_ave_p, Tk_ave_p)
+#pragma omp for reduction(+ : x_e_ave_p)
         for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
             x_e_ave_p += previous_spin_temp->xray_ionised_fraction[box_ct];
-            Tk_ave_p += previous_spin_temp->kinetic_temp_neutral[box_ct];
         }
     }
-    x_e_ave_p /= (float)HII_TOT_NUM_PIXELS;
-    Tk_ave_p /= (float)HII_TOT_NUM_PIXELS;  // not used?
-    LOG_DEBUG("Prev Box: x_e_ave %.3e | TK_ave %.3e", x_e_ave_p, Tk_ave_p);
-
-    int NO_LIGHT;
-    double mean_sfr_zpp[astro_params_global->N_STEP_TS];
-    double mean_sfr_zpp_mini[astro_params_global->N_STEP_TS];
+    rad_setup->x_e_ave_p = x_e_ave_p / (float)HII_TOT_NUM_PIXELS;
+    LOG_DEBUG("Prev Box: x_e_ave %.3e", rad_setup->x_e_ave_p);
 
     // this should initialise and use the global tables (given box average turnovers)
     //   and use them to give: Filling factor at zp (only used for !MASS_DEPENDENT_ZETA to get
     //   ion_eff) global SFRD at each filter radius (numerator of ST_over_PS factor)
-    double Q_HI_zp;
 
-    NO_LIGHT = global_reion_properties(redshift, x_e_ave_p, ave_log10_MturnLW, mean_sfr_zpp,
-                                       mean_sfr_zpp_mini, &Q_HI_zp);
-    this_spin_temp->Q_HI = Q_HI_zp;
+    rad_setup->NO_LIGHT = global_reion_properties(redshift, rad_setup);
+    this_spin_temp->Q_HI = rad_setup->Q_HI_zp;
 
 #pragma omp parallel private(box_ct) num_threads(simulation_options_global -> N_THREADS)
     {
@@ -1312,8 +1326,24 @@ void get_radition_fields(float redshift, float prev_redshift, float perturbed_fi
                                       inverse_diff[m_xHII_low_box[box_ct]];
         }
     }
+}
 
-    // MAIN LOOP: SFR -> heating terms with freq integrals
+/*
+    This function helps to calculate the radiation fields (x-ray heating rate, photoionization rate,
+   lyman alpha flux, etc.). The radiation fields are all given by an integral over the past source
+   emissivities. Numerically, this integral is evaluated via the trapezoidal rule, which is done by
+   summing over the contributions from each redshift shell. Thus, this function calculates the
+   contribution from a single redshift shell and adds it to the total radiation fields. This is done
+   by filling the arrays in XraySourceBox.
+
+    TODO: it makes more sense to move this function to XraySourceBox.c, but this module is currently
+   not called when using the old Eulerian source models, so we keep it here for now as we can use
+   the global arrays for both Eulerian and Lagrangian source models. This will be fixed when
+   https://github.com/21cmfast/21cmFAST/issues/668 is solved.
+*/
+void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
+                                XraySourceBox *source_box, int R_ct) {
+    index_huge box_ct;
     double z_edge_factor, dzpp_for_evolve, zpp, xray_R_factor;
     double lyacont_factor_mini = 0., lyainj_factor_mini = 0., starlya_factor_mini = 0.;
     double ave_fcoll, ave_fcoll_MINI;
@@ -1323,275 +1353,276 @@ void get_radition_fields(float redshift, float prev_redshift, float perturbed_fi
     float *delta_box_input;
     float *Mcrit_box_input = NULL;  // may be unused
 
-    // if we have stars, fill in the heating term boxes
-    if (!NO_LIGHT) {
-        for (R_ct = astro_params_global->N_STEP_TS; R_ct--;) {
-            dzpp_for_evolve = dzpp_list[R_ct];
-            zpp = zpp_for_evolve_list[R_ct];
-            // dtdz'' dz'' -> dR for the radius sum (c included in constants)
-            if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_CONST_ION_EFF)
-                z_edge_factor = dzpp_for_evolve;  // uses dfcoll/dz
-            else if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_E_INTEGRAL)
-                z_edge_factor = fabs(dzpp_for_evolve * dtdz_list[R_ct]) * hubble(zpp) /
-                                astro_params_global->t_STAR;
-            else
-                z_edge_factor = fabs(dzpp_for_evolve * dtdz_list[R_ct]);
+    dzpp_for_evolve = dzpp_list[R_ct];
+    zpp = zpp_for_evolve_list[R_ct];
+    // dtdz'' dz'' -> dR for the radius sum (c included in constants)
+    if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_CONST_ION_EFF)
+        z_edge_factor = dzpp_for_evolve;  // uses dfcoll/dz
+    else if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_E_INTEGRAL)
+        z_edge_factor =
+            fabs(dzpp_for_evolve * dtdz_list[R_ct]) * hubble(zpp) / astro_params_global->t_STAR;
+    else
+        z_edge_factor = fabs(dzpp_for_evolve * dtdz_list[R_ct]);
 
-            xray_R_factor = pow(1 + zpp, -(astro_params_global->X_RAY_SPEC_INDEX));
+    xray_R_factor = pow(1 + zpp, -(astro_params_global->X_RAY_SPEC_INDEX));
 
-            set_scaling_constants(zpp, &sc, false);
+    // index for grids. For Eulerian grid source models (<2), we can use a single
+    // filter radius at a time, if MINIMIZE_MEMORY=True
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+        matter_options_global->MINIMIZE_MEMORY) {
+        R_index = 0;
+    } else {
+        R_index = R_ct;
+    }
 
-            // index for grids. For Eulerian grid source models (<2), we can use a single
-            // filter radius at a time, if MINIMIZE_MEMORY=True
-            if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
-                matter_options_global->MINIMIZE_MEMORY) {
-                R_index = 0;
-            } else {
-                R_index = R_ct;
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+        set_scaling_constants(zpp, &rad_setup->sc, false);
+        if (matter_options_global->MINIMIZE_MEMORY) {
+            // we call the filtering functions once here per R
+            // This unnecessarily allocates and frees a fftwf box every time but surely
+            // that's not a bottleneck
+            fill_Rbox_table(delNL0, rad_setup->delta_unfiltered, &(R_values[R_ct]), 1, -1,
+                            rad_setup->inverse_growth_factor_z, &min_densities[R_ct],
+                            &rad_setup->ave_dens[R_ct], &max_densities[R_ct]);
+            if (astro_options_global->USE_MINI_HALOS) {
+                fill_Rbox_table(log10_Mcrit_LW, rad_setup->log10_Mcrit_LW_unfiltered,
+                                &(R_values[R_ct]), 1, 0, 1, &rad_setup->min_log10_MturnLW[R_ct],
+                                &rad_setup->ave_log10_MturnLW[R_ct],
+                                &rad_setup->max_log10_MturnLW[R_ct]);
             }
-
-            if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
-                if (matter_options_global->MINIMIZE_MEMORY) {
-                    // we call the filtering functions once here per R
-                    // This unnecessarily allocates and frees a fftwf box every time but surely
-                    // that's not a bottleneck
-                    fill_Rbox_table(delNL0, delta_unfiltered, &(R_values[R_ct]), 1, -1,
-                                    inverse_growth_factor_z, &min_densities[R_ct], &ave_dens[R_ct],
-                                    &max_densities[R_ct]);
-                    if (astro_options_global->USE_MINI_HALOS) {
-                        fill_Rbox_table(log10_Mcrit_LW, log10_Mcrit_LW_unfiltered,
-                                        &(R_values[R_ct]), 1, 0, 1, &min_log10_MturnLW[R_ct],
-                                        &ave_log10_MturnLW[R_ct], &max_log10_MturnLW[R_ct]);
-                    }
-                    // get the global things we missed before
-                    // TODO: At the moment, inhomogeneous reionization feedback cannot be
-                    // accounted in SpinTemperatureBox.c,
-                    //      see https://github.com/21cmfast/21cmFAST/issues/470. Thus, we use
-                    //      the homogeneous (feedback-free) ACG turnover mass. It is important
-                    //      to remember to fix this when issue #470 is fixed!
-                    mean_sfr_zpp[R_ct] = EvaluateSFRD(zpp_for_evolve_list[R_ct],
-                                                      log10(sc.mturn_acg_homogeneous), &sc);
-                    if (astro_options_global->USE_MINI_HALOS) {
-                        mean_sfr_zpp_mini[R_ct] = EvaluateSFRD_MINI(zpp_for_evolve_list[R_ct],
-                                                                    log10(sc.mturn_acg_homogeneous),
-                                                                    ave_log10_MturnLW[R_ct], &sc);
-                    }
-                    // fill one row of the interp tables
-                    fill_freqint_tables(redshift, x_e_ave_p, Q_HI_zp, ave_log10_MturnLW, R_ct, &sc);
-                }
-                // set input pointers (doing things this way helps with flag flexibility)
-                delta_box_input = delNL0[R_index];
-                if (astro_options_global->USE_MINI_HALOS) {
-                    Mcrit_box_input = log10_Mcrit_LW[R_index];
-                }
-                calculate_sfrd_from_grid(R_ct, delta_box_input, Mcrit_box_input, del_fcoll_Rct,
-                                         del_fcoll_Rct_MINI, &ave_fcoll, &ave_fcoll_MINI, &sc);
-                avg_fix_term = mean_sfr_zpp[R_ct] / ave_fcoll;
-                if (astro_options_global->USE_MINI_HALOS)
-                    avg_fix_term_MINI = mean_sfr_zpp_mini[R_ct] / ave_fcoll_MINI;
+            // get the global things we missed before
+            // TODO: At the moment, inhomogeneous reionization feedback cannot be
+            // accounted in SpinTemperatureBox.c,
+            //      see https://github.com/21cmfast/21cmFAST/issues/470. Thus, we use
+            //      the homogeneous (feedback-free) ACG turnover mass. It is important
+            //      to remember to fix this when issue #470 is fixed!
+            rad_setup->mean_sfr_zpp[R_ct] =
+                EvaluateSFRD(zpp_for_evolve_list[R_ct], log10(rad_setup->sc.mturn_acg_homogeneous),
+                             &rad_setup->sc);
+            if (astro_options_global->USE_MINI_HALOS) {
+                rad_setup->mean_sfr_zpp_mini[R_ct] = EvaluateSFRD_MINI(
+                    zpp_for_evolve_list[R_ct], log10(rad_setup->sc.mturn_acg_homogeneous),
+                    rad_setup->ave_log10_MturnLW[R_ct], &rad_setup->sc);
+            }
+            // fill one row of the interp tables
+            fill_freqint_tables(redshift, rad_setup->x_e_ave_p, rad_setup->Q_HI_zp,
+                                rad_setup->ave_log10_MturnLW, R_ct, &rad_setup->sc);
+        }
+        // set input pointers (doing things this way helps with flag flexibility)
+        delta_box_input = delNL0[R_index];
+        if (astro_options_global->USE_MINI_HALOS) {
+            Mcrit_box_input = log10_Mcrit_LW[R_index];
+        }
+        calculate_sfrd_from_grid(R_ct, delta_box_input, Mcrit_box_input, del_fcoll_Rct,
+                                 del_fcoll_Rct_MINI, &ave_fcoll, &ave_fcoll_MINI, &rad_setup->sc);
+        avg_fix_term = rad_setup->mean_sfr_zpp[R_ct] / ave_fcoll;
+        if (astro_options_global->USE_MINI_HALOS)
+            avg_fix_term_MINI = rad_setup->mean_sfr_zpp_mini[R_ct] / ave_fcoll_MINI;
 
 #if LOG_LEVEL >= SUPER_DEBUG_LEVEL
-                ScalingConstants sc_sfrd;
-                sc_sfrd = evolve_scaling_constants_sfr(&sc);
-                LOG_SUPER_DEBUG(
-                    "z %6.2f ave sfrd val %.3e global %.3e (int %.3e) Mmin %.3e ratio %.4e "
-                    "z_edge "
-                    "%.4e",
-                    zpp_for_evolve_list[R_ct], ave_fcoll, mean_sfr_zpp[R_ct],
-                    Nion_General(zpp_for_evolve_list[R_ct], log(M_min_R[R_ct]), log(M_MAX_INTEGRAL),
-                                 sc_sfrd.mturn_acg_homogeneous, &sc_sfrd),
-                    M_min_R[R_ct], avg_fix_term, z_edge_factor);
-                if (astro_options_global->USE_MINI_HALOS) {
-                    LOG_SUPER_DEBUG(
-                        "MINI sfrd val %.3e global %.3e (int %.3e) ratio %.3e log10McritLW "
-                        "%.3e",
-                        ave_fcoll_MINI, mean_sfr_zpp_mini[R_ct],
-                        Nion_General_MINI(zpp_for_evolve_list[R_ct], log(M_min_R[R_ct]),
-                                          log(M_MAX_INTEGRAL), sc_sfrd.mturn_acg_homogeneous,
-                                          pow(10., ave_log10_MturnLW[R_ct]), &sc_sfrd),
-                        avg_fix_term_MINI, ave_log10_MturnLW[R_ct]);
-                }
+        ScalingConstants sc_sfrd;
+        sc_sfrd = evolve_scaling_constants_sfr(&sc);
+        LOG_SUPER_DEBUG(
+            "z %6.2f ave sfrd val %.3e global %.3e (int %.3e) Mmin %.3e ratio %.4e "
+            "z_edge "
+            "%.4e",
+            zpp_for_evolve_list[R_ct], ave_fcoll, rad_setup->mean_sfr_zpp[R_ct],
+            Nion_General(zpp_for_evolve_list[R_ct], log(M_min_R[R_ct]), log(M_MAX_INTEGRAL),
+                         sc_sfrd.mturn_acg_homogeneous, &sc_sfrd),
+            M_min_R[R_ct], avg_fix_term, z_edge_factor);
+        if (astro_options_global->USE_MINI_HALOS) {
+            LOG_SUPER_DEBUG(
+                "MINI sfrd val %.3e global %.3e (int %.3e) ratio %.3e log10McritLW "
+                "%.3e",
+                ave_fcoll_MINI, mean_sfr_zpp_mini[R_ct],
+                Nion_General_MINI(zpp_for_evolve_list[R_ct], log(M_min_R[R_ct]),
+                                  log(M_MAX_INTEGRAL), sc_sfrd.mturn_acg_homogeneous,
+                                  pow(10., ave_log10_MturnLW[R_ct]), &sc_sfrd),
+                avg_fix_term_MINI, ave_log10_MturnLW[R_ct]);
+        }
 #endif
-            }
+    }
 
-            // minihalo factors should be separated since they may not be allocated
-            if (astro_options_global->USE_MINI_HALOS) {
-                starlya_factor_mini = dstarlya_dt_prefactor_MINI[R_ct];
-                if (astro_options_global->USE_LYA_HEATING) {
-                    lyacont_factor_mini = dstarlya_cont_dt_prefactor_MINI[R_ct];
-                    lyainj_factor_mini = dstarlya_inj_dt_prefactor_MINI[R_ct];
-                }
-            }
+    // minihalo factors should be separated since they may not be allocated
+    if (astro_options_global->USE_MINI_HALOS) {
+        starlya_factor_mini = dstarlya_dt_prefactor_MINI[R_ct];
+        if (astro_options_global->USE_LYA_HEATING) {
+            lyacont_factor_mini = dstarlya_cont_dt_prefactor_MINI[R_ct];
+            lyainj_factor_mini = dstarlya_inj_dt_prefactor_MINI[R_ct];
+        }
+    }
 
 // NOTE: The ionisation box has a final delta dependence of (1+delta_source)/(1+delta_absorber)
 //   But here it's just (1+delta_source). This is for photon conservation.
 //   If we assume attenuation at mean density as we do in nu_tau_one(), we HAVE to assume mean
 //   density absorption otherwise we do not conserve photons
 #pragma omp parallel private(box_ct) num_threads(simulation_options_global -> N_THREADS)
-            {
-                // private variables
-                int xidx;
-                double ival;
-                double freq_int_heat, freq_int_ion, freq_int_lya;
-                double sfr_term, xray_sfr;
-                double sfr_term_mini = 0;
-                double sfr_term_lw, sfr_term_mini_lw;
+    {
+        // private variables
+        int xidx;
+        double ival;
+        double freq_int_heat, freq_int_ion, freq_int_lya;
+        double sfr_term, xray_sfr;
+        double sfr_term_mini = 0;
+        double sfr_term_lw, sfr_term_mini_lw;
 #pragma omp for
-                for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
-                    // sum each R contribution together
-                    // The dxdt boxes exist for two reasons. Firstly it allows the
-                    // MINIMIZE_MEMORY to work (replaces ~40*NUM_PIXELS with ~4-16*NUM_PIXELS),
-                    //   as the FFT is done in the R-loop.
-                    // Secondly, it is *likely* faster to fill these boxes, and sum with a outer
-                    // R loop than an inner one.
+        for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
+            // sum each R contribution together
+            // The dxdt boxes exist for two reasons. Firstly it allows the
+            // MINIMIZE_MEMORY to work (replaces ~40*NUM_PIXELS with ~4-16*NUM_PIXELS),
+            //   as the FFT is done in the R-loop.
+            // Secondly, it is *likely* faster to fill these boxes, and sum with a outer
+            // R loop than an inner one.
 
-                    if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
-                        sfr_term = source_box->filtered_sfr[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
-                                   z_edge_factor;
-                        // Minihalos and s->yr conversion are already included here
-                        xray_sfr = source_box->filtered_xray[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
-                                   z_edge_factor * xray_R_factor * 1e38;
-                        if (astro_options_global->USE_MINI_HALOS &&
-                            astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                            sfr_term_lw =
-                                source_box->filtered_sfr_lw[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
-                                z_edge_factor;
-                        } else {
-                            sfr_term_lw = sfr_term;
-                        }
+            if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
+                sfr_term =
+                    source_box->filtered_sfr[R_ct * HII_TOT_NUM_PIXELS + box_ct] * z_edge_factor;
+                // Minihalos and s->yr conversion are already included here
+                xray_sfr = source_box->filtered_xray[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
+                           z_edge_factor * xray_R_factor * 1e38;
+                if (astro_options_global->USE_MINI_HALOS &&
+                    astro_options_global->LYA_MULTIPLE_SCATTERING) {
+                    sfr_term_lw = source_box->filtered_sfr_lw[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
+                                  z_edge_factor;
+                } else {
+                    sfr_term_lw = sfr_term;
+                }
+            } else {
+                // NOTE: for SOURCE_MODEL==0 F_STAR10 is still used for constant
+                // stellar fraction
+                sfr_term = del_fcoll_Rct[box_ct] * z_edge_factor * avg_fix_term *
+                           astro_params_global->F_STAR10;
+                xray_sfr = sfr_term * astro_params_global->L_X * xray_R_factor * physconst.s_per_yr;
+            }
+            if (astro_options_global->USE_MINI_HALOS) {
+                if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
+                    sfr_term_mini =
+                        source_box->filtered_sfr_mini[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
+                        z_edge_factor;
+                    if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
+                        sfr_term_mini_lw =
+                            source_box->filtered_sfr_mini_lw[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
+                            z_edge_factor;
                     } else {
-                        // NOTE: for SOURCE_MODEL==0 F_STAR10 is still used for constant
-                        // stellar fraction
-                        sfr_term = del_fcoll_Rct[box_ct] * z_edge_factor * avg_fix_term *
-                                   astro_params_global->F_STAR10;
-                        xray_sfr = sfr_term * astro_params_global->L_X * xray_R_factor *
-                                   physconst.s_per_yr;
+                        sfr_term_mini_lw = sfr_term_mini;
                     }
-                    if (astro_options_global->USE_MINI_HALOS) {
-                        if (source_model_uses_lagrangian_grids(
-                                matter_options_global->SOURCE_MODEL)) {
-                            sfr_term_mini =
-                                source_box->filtered_sfr_mini[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
-                                z_edge_factor;
-                            if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                                sfr_term_mini_lw =
-                                    source_box
-                                        ->filtered_sfr_mini_lw[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
-                                    z_edge_factor;
-                            } else {
-                                sfr_term_mini_lw = sfr_term_mini;
-                            }
-                        } else {
-                            sfr_term_mini = del_fcoll_Rct_MINI[box_ct] * z_edge_factor *
-                                            avg_fix_term_MINI * astro_params_global->F_STAR7_MINI;
-                            xray_sfr += sfr_term_mini * astro_params_global->L_X_MINI *
-                                        xray_R_factor * physconst.s_per_yr;
-                            sfr_term_lw = sfr_term;
-                            sfr_term_mini_lw = sfr_term_mini;
-                        }
-                    }
+                } else {
+                    sfr_term_mini = del_fcoll_Rct_MINI[box_ct] * z_edge_factor * avg_fix_term_MINI *
+                                    astro_params_global->F_STAR7_MINI;
+                    xray_sfr += sfr_term_mini * astro_params_global->L_X_MINI * xray_R_factor *
+                                physconst.s_per_yr;
+                    sfr_term_lw = sfr_term;
+                    sfr_term_mini_lw = sfr_term_mini;
+                }
+            }
 
-                    // Evaluate the frequency integrals for this shell (R_ct) and cell (box_ct) via
-                    // linear interpolation
-                    xidx = m_xHII_low_box[box_ct];
-                    ival = inverse_val_box[box_ct];
-                    freq_int_heat =
-                        freq_int_heat_tbl_diff[xidx][R_ct] * ival + freq_int_heat_tbl[xidx][R_ct];
-                    freq_int_ion =
-                        freq_int_ion_tbl_diff[xidx][R_ct] * ival + freq_int_ion_tbl[xidx][R_ct];
-                    freq_int_lya =
-                        freq_int_lya_tbl_diff[xidx][R_ct] * ival + freq_int_lya_tbl[xidx][R_ct];
+            // Evaluate the frequency integrals for this shell (R_ct) and cell (box_ct) via
+            // linear interpolation
+            xidx = m_xHII_low_box[box_ct];
+            ival = inverse_val_box[box_ct];
+            freq_int_heat =
+                freq_int_heat_tbl_diff[xidx][R_ct] * ival + freq_int_heat_tbl[xidx][R_ct];
+            freq_int_ion = freq_int_ion_tbl_diff[xidx][R_ct] * ival + freq_int_ion_tbl[xidx][R_ct];
+            freq_int_lya = freq_int_lya_tbl_diff[xidx][R_ct] * ival + freq_int_lya_tbl[xidx][R_ct];
 
-                    // Evaluate the radiation fields by adding the contribution from this shell
-                    // (R_ct) This implements trapezoidal integration over the shells
-                    if (astro_options_global->USE_X_RAY_HEATING) {
-                        source_box->dxheat_dt[box_ct] += xray_sfr * freq_int_heat;
-                    }
-                    source_box->dxion_dt[box_ct] += xray_sfr * freq_int_ion;
-                    source_box->dxlya_dt[box_ct] += xray_sfr * freq_int_lya;
-                    source_box->dstarlya_dt[box_ct] += sfr_term * dstarlya_dt_prefactor[R_ct] +
-                                                       sfr_term_mini * starlya_factor_mini;
-                    if (astro_options_global->USE_MINI_HALOS) {
-                        source_box->dstarLW_dt[box_ct] +=
-                            sfr_term_lw * dstarlyLW_dt_prefactor[R_ct] +
-                            sfr_term_mini_lw * dstarlyLW_dt_prefactor_MINI[R_ct];
-                    }
-                    if (astro_options_global->USE_LYA_HEATING) {
-                        source_box->dstarlya_cont_dt[box_ct] +=
-                            sfr_term * dstarlya_cont_dt_prefactor[R_ct] +
-                            sfr_term_mini * lyacont_factor_mini;
-                        source_box->dstarlya_inj_dt[box_ct] +=
-                            sfr_term * dstarlya_inj_dt_prefactor[R_ct] +
-                            sfr_term_mini * lyainj_factor_mini;
-                    }
+            // Evaluate the radiation fields by adding the contribution from this shell
+            // (R_ct) This implements trapezoidal integration over the shells
+            if (astro_options_global->USE_X_RAY_HEATING) {
+                source_box->dxheat_dt[box_ct] += xray_sfr * freq_int_heat;
+            }
+            source_box->dxion_dt[box_ct] += xray_sfr * freq_int_ion;
+            source_box->dxlya_dt[box_ct] += xray_sfr * freq_int_lya;
+            source_box->dstarlya_dt[box_ct] +=
+                sfr_term * dstarlya_dt_prefactor[R_ct] + sfr_term_mini * starlya_factor_mini;
+            if (astro_options_global->USE_MINI_HALOS) {
+                source_box->dstarLW_dt[box_ct] +=
+                    sfr_term_lw * dstarlyLW_dt_prefactor[R_ct] +
+                    sfr_term_mini_lw * dstarlyLW_dt_prefactor_MINI[R_ct];
+            }
+            if (astro_options_global->USE_LYA_HEATING) {
+                source_box->dstarlya_cont_dt[box_ct] +=
+                    sfr_term * dstarlya_cont_dt_prefactor[R_ct] +
+                    sfr_term_mini * lyacont_factor_mini;
+                source_box->dstarlya_inj_dt[box_ct] +=
+                    sfr_term * dstarlya_inj_dt_prefactor[R_ct] + sfr_term_mini * lyainj_factor_mini;
+            }
 
-                    // I cannot check the integral if we are using the halo field since delNL0
-                    // (filtered density) is not calculated
+            // I cannot check the integral if we are using the halo field since delNL0
+            // (filtered density) is not calculated
 #if LOG_LEVEL >= SUPER_DEBUG_LEVEL
-                    if (box_ct == 0 &&
-                        source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
-                        double integral_db;
-                        if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_E_INTEGRAL) {
-                            integral_db =
-                                Nion_ConditionalM(zpp_growth[R_ct], log(M_min_R[R_ct]),
-                                                  log(M_max_R[R_ct]), M_max_R[R_ct],
-                                                  sigma_max[R_ct],
-                                                  delNL0[R_index][box_ct] * zpp_growth[R_ct],
-                                                  sc_sfrd.mturn_acg_homogeneous, &sc_sfrd,
-                                                  astro_options_global->INTEGRATION_METHOD_ATOMIC) *
-                                z_edge_factor * (1 + delNL0[R_index][box_ct] * zpp_growth[R_ct]) *
-                                avg_fix_term * astro_params_global->F_STAR10;
-                        } else {
-                            integral_db = dfcoll_dz(zpp_for_evolve_list[R_ct], sigma_min[R_ct],
-                                                    delNL0[R_index][box_ct] * zpp_growth[R_ct],
-                                                    sigma_max[R_ct]) *
-                                          z_edge_factor *
-                                          (1 + delNL0[R_index][box_ct] * zpp_growth[R_ct]) *
-                                          avg_fix_term * astro_params_global->F_STAR10;
-                        }
+            if (box_ct == 0 &&
+                source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+                double integral_db;
+                if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_E_INTEGRAL) {
+                    integral_db =
+                        Nion_ConditionalM(zpp_growth[R_ct], log(M_min_R[R_ct]), log(M_max_R[R_ct]),
+                                          M_max_R[R_ct], sigma_max[R_ct],
+                                          delNL0[R_index][box_ct] * zpp_growth[R_ct],
+                                          sc_sfrd.mturn_acg_homogeneous, &sc_sfrd,
+                                          astro_options_global->INTEGRATION_METHOD_ATOMIC) *
+                        z_edge_factor * (1 + delNL0[R_index][box_ct] * zpp_growth[R_ct]) *
+                        avg_fix_term * astro_params_global->F_STAR10;
+                } else {
+                    integral_db =
+                        dfcoll_dz(zpp_for_evolve_list[R_ct], sigma_min[R_ct],
+                                  delNL0[R_index][box_ct] * zpp_growth[R_ct], sigma_max[R_ct]) *
+                        z_edge_factor * (1 + delNL0[R_index][box_ct] * zpp_growth[R_ct]) *
+                        avg_fix_term * astro_params_global->F_STAR10;
+                }
 
-                        LOG_SUPER_DEBUG(
-                            "Cell 0: R=%.1f (%.3f) | SFR %.4e | integral %.4e | delta %.4e",
-                            R_values[R_ct], zpp_for_evolve_list[R_ct], sfr_term, integral_db,
-                            delNL0[R_index][box_ct]);
-                        if (astro_options_global->USE_MINI_HALOS)
-                            LOG_SUPER_DEBUG(
-                                "MINI SFR %.4e | integral %.4e", sfr_term_mini,
-                                Nion_ConditionalM_MINI(
-                                    zpp_growth[R_ct], log(M_min_R[R_ct]), log(M_max_R[R_ct]),
-                                    log(M_max_R[R_ct]), sigma_max[R_ct],
-                                    delNL0[R_index][box_ct] * zpp_growth[R_ct],
-                                    sc_sfrd.mturn_acg_homogeneous,
-                                    pow(10, log10_Mcrit_LW[R_ct][box_ct]), &sc_sfrd,
-                                    astro_options_global->INTEGRATION_METHOD_MINI) *
-                                    z_edge_factor *
-                                    (1 + delNL0[R_index][box_ct] * zpp_growth[R_ct]) *
-                                    avg_fix_term_MINI * astro_params_global->F_STAR7_MINI);
+                LOG_SUPER_DEBUG("Cell 0: R=%.1f (%.3f) | SFR %.4e | integral %.4e | delta %.4e",
+                                R_values[R_ct], zpp_for_evolve_list[R_ct], sfr_term, integral_db,
+                                delNL0[R_index][box_ct]);
+                if (astro_options_global->USE_MINI_HALOS)
+                    LOG_SUPER_DEBUG(
+                        "MINI SFR %.4e | integral %.4e", sfr_term_mini,
+                        Nion_ConditionalM_MINI(
+                            zpp_growth[R_ct], log(M_min_R[R_ct]), log(M_max_R[R_ct]),
+                            log(M_max_R[R_ct]), sigma_max[R_ct],
+                            delNL0[R_index][box_ct] * zpp_growth[R_ct],
+                            sc_sfrd.mturn_acg_homogeneous, pow(10, log10_Mcrit_LW[R_ct][box_ct]),
+                            &sc_sfrd, astro_options_global->INTEGRATION_METHOD_MINI) *
+                            z_edge_factor * (1 + delNL0[R_index][box_ct] * zpp_growth[R_ct]) *
+                            avg_fix_term_MINI * astro_params_global->F_STAR7_MINI);
 
-                        if (astro_options_global->USE_X_RAY_HEATING) {
-                            LOG_SUPER_DEBUG(
-                                "xh %.2e | xi %.2e | xl %.2e | sl %.2e",
-                                source_box->dxheat_dt[box_ct] / astro_params_global->L_X,
-                                source_box->dxion_dt[box_ct] / astro_params_global->L_X,
-                                source_box->dxlya_dt[box_ct] / astro_params_global->L_X,
-                                source_box->dstarlya_dt[box_ct]);
-                        } else {
-                            LOG_SUPER_DEBUG("xi %.2e | xl %.2e | sl %.2e",
-                                            source_box->dxion_dt[box_ct] / astro_params_global->L_X,
-                                            source_box->dxlya_dt[box_ct] / astro_params_global->L_X,
-                                            source_box->dstarlya_dt[box_ct]);
-                        }
+                if (astro_options_global->USE_X_RAY_HEATING) {
+                    LOG_SUPER_DEBUG("xh %.2e | xi %.2e | xl %.2e | sl %.2e",
+                                    source_box->dxheat_dt[box_ct] / astro_params_global->L_X,
+                                    source_box->dxion_dt[box_ct] / astro_params_global->L_X,
+                                    source_box->dxlya_dt[box_ct] / astro_params_global->L_X,
+                                    source_box->dstarlya_dt[box_ct]);
+                } else {
+                    LOG_SUPER_DEBUG("xi %.2e | xl %.2e | sl %.2e",
+                                    source_box->dxion_dt[box_ct] / astro_params_global->L_X,
+                                    source_box->dxlya_dt[box_ct] / astro_params_global->L_X,
+                                    source_box->dstarlya_dt[box_ct]);
+                }
 
-                        if (astro_options_global->USE_LYA_HEATING)
-                            LOG_SUPER_DEBUG("ct %.2e | ij %.2e",
-                                            source_box->dstarlya_cont_dt[box_ct],
-                                            source_box->dstarlya_inj_dt[box_ct]);
-                    }
+                if (astro_options_global->USE_LYA_HEATING)
+                    LOG_SUPER_DEBUG("ct %.2e | ij %.2e", source_box->dstarlya_cont_dt[box_ct],
+                                    source_box->dstarlya_inj_dt[box_ct]);
+            }
 #endif
-                }  // end of box_ct loop
-            }  // end of pragma loop
-        }  // end of R_ct loop
-    }  // end of NO_LIGHT check
+        }  // end of box_ct loop
+    }  // end of pragma loop
+}
+
+void free_rad_setup(RadiationFieldsSetup *rad_setup, short cleanup) {
+    if (astro_options_global->USE_MINI_HALOS) {
+        free(rad_setup->ave_log10_MturnLW);
+    }
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+        fftwf_free(rad_setup->delta_unfiltered);
+        free(rad_setup->ave_dens);
+        free(rad_setup->mean_sfr_zpp);
+        if (astro_options_global->USE_MINI_HALOS) {
+            fftwf_free(rad_setup->log10_Mcrit_LW_unfiltered);
+            free(rad_setup->min_log10_MturnLW);
+            free(rad_setup->max_log10_MturnLW);
+            free(rad_setup->mean_sfr_zpp_mini);
+        }
+    }
+    free(rad_setup);
 
     // we definitely don't need these tables anymore
     // Having these free's here instead of after global_reion_properties just for
@@ -1600,10 +1631,6 @@ void get_radition_fields(float redshift, float prev_redshift, float perturbed_fi
     free_global_tables();
 
     if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
-        fftwf_free(delta_unfiltered);
-        if (astro_options_global->USE_MINI_HALOS) {
-            fftwf_free(log10_Mcrit_LW_unfiltered);
-        }
         fftwf_forget_wisdom();
         fftwf_cleanup_threads();
         fftwf_cleanup();
@@ -1635,14 +1662,21 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                           redshift);
             return (0);
         }
+        int R_ct;
+
+        RadiationFieldsSetup *rad_setup = malloc(sizeof(RadiationFieldsSetup));
+        setup_radiation_fields(redshift, perturbed_field_redshift, perturbed_field, source_box,
+                               previous_spin_temp, ini_boxes, this_spin_temp, rad_setup);
+        if (!rad_setup->NO_LIGHT) {
+            for (R_ct = astro_params_global->N_STEP_TS; R_ct--;) {
+                accumulate_radiation_shell(redshift, rad_setup, source_box, R_ct);
+            }
+        }
+        free_rad_setup(rad_setup, cleanup);
 
         // set the constants calculated once per snapshot
         struct spintemp_from_sfr_prefactors zp_consts;
         set_zp_consts(redshift, &zp_consts);
-
-        get_radition_fields(redshift, prev_redshift, perturbed_field_redshift, cleanup,
-                            perturbed_field, source_box, previous_spin_temp, ini_boxes,
-                            this_spin_temp);
 
         index_huge box_ct;
         double growth_factor_z, growth_factor_zp;
