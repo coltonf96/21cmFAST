@@ -1267,34 +1267,23 @@ class XraySourceBox(OutputStructZ):
             ),
         )
 
-        shape_4D = (
-            (inputs.astro_params.N_STEP_TS,)
-            + (inputs.simulation_options.HII_DIM,) * 2
-            + (
-                int(
-                    inputs.simulation_options.NON_CUBIC_FACTOR
-                    * inputs.simulation_options.HII_DIM
-                ),
-            )
-        )
-
         # TODO: the 3D arrays below are defined as np.float64, but should be np.float32 - see https://github.com/21cmfast/21cmFAST/issues/744
         out = {
-            "filtered_sfr": Array(shape_4D, dtype=np.float32),
-            "filtered_xray": Array(shape_4D, dtype=np.float32),
+            "filtered_sfr": Array(shape, dtype=np.float32),
+            "filtered_xray": Array(shape, dtype=np.float32),
             "dxion_dt": Array(shape, dtype=np.float64),
             "dxlya_dt": Array(shape, dtype=np.float64),
             "dstarlya_dt": Array(shape, dtype=np.float64),
         }
         if inputs.astro_options.USE_MINI_HALOS:
-            out["filtered_sfr_mini"] = Array(shape_4D, dtype=np.float32)
+            out["filtered_sfr_mini"] = Array(shape, dtype=np.float32)
             out["mean_log10_Mcrit_LW"] = Array(
                 (inputs.astro_params.N_STEP_TS,), dtype=np.float64
             )
             out["dstarLW_dt"] = Array(shape, dtype=np.float64)
             if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
-                out["filtered_sfr_lw"] = Array(shape_4D, dtype=np.float32)
-                out["filtered_sfr_mini_lw"] = Array(shape_4D, dtype=np.float32)
+                out["filtered_sfr_lw"] = Array(shape, dtype=np.float32)
+                out["filtered_sfr_mini_lw"] = Array(shape, dtype=np.float32)
 
         if inputs.astro_options.USE_X_RAY_HEATING:
             out["dxheat_dt"] = Array(shape, dtype=np.float64)

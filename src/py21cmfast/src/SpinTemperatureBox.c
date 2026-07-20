@@ -1456,15 +1456,12 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
             // R loop than an inner one.
 
             if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
-                sfr_term =
-                    source_box->filtered_sfr[R_ct * HII_TOT_NUM_PIXELS + box_ct] * z_edge_factor;
+                sfr_term = source_box->filtered_sfr[box_ct] * z_edge_factor;
                 // Minihalos and s->yr conversion are already included here
-                xray_sfr = source_box->filtered_xray[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
-                           z_edge_factor * xray_R_factor * 1e38;
+                xray_sfr = source_box->filtered_xray[box_ct] * z_edge_factor * xray_R_factor * 1e38;
                 if (astro_options_global->USE_MINI_HALOS &&
                     astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                    sfr_term_lw = source_box->filtered_sfr_lw[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
-                                  z_edge_factor;
+                    sfr_term_lw = source_box->filtered_sfr_lw[box_ct] * z_edge_factor;
                 } else {
                     sfr_term_lw = sfr_term;
                 }
@@ -1477,13 +1474,9 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
             }
             if (astro_options_global->USE_MINI_HALOS) {
                 if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
-                    sfr_term_mini =
-                        source_box->filtered_sfr_mini[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
-                        z_edge_factor;
+                    sfr_term_mini = source_box->filtered_sfr_mini[box_ct] * z_edge_factor;
                     if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                        sfr_term_mini_lw =
-                            source_box->filtered_sfr_mini_lw[R_ct * HII_TOT_NUM_PIXELS + box_ct] *
-                            z_edge_factor;
+                        sfr_term_mini_lw = source_box->filtered_sfr_mini_lw[box_ct] * z_edge_factor;
                     } else {
                         sfr_term_mini_lw = sfr_term_mini;
                     }

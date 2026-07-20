@@ -157,27 +157,20 @@ int UpdateXraySourceBox(float redshift, HaloBox *halobox, double R_inner, double
 
             double sfr_avg, fsfr_avg, sfr_avg_mini = 0., fsfr_avg_mini = 0.;
             double xray_avg, fxray_avg;
-            one_annular_filter(halobox->halo_sfr,
-                               &(source_box->filtered_sfr[R_ct * HII_TOT_NUM_PIXELS]), R_inner,
-                               R_outer, R_star, filter_type, &sfr_avg, &fsfr_avg);
-            one_annular_filter(halobox->halo_xray,
-                               &(source_box->filtered_xray[R_ct * HII_TOT_NUM_PIXELS]), R_inner,
-                               R_outer, R_star, 4, &xray_avg, &fxray_avg);
+            one_annular_filter(halobox->halo_sfr, source_box->filtered_sfr, R_inner, R_outer,
+                               R_star, filter_type, &sfr_avg, &fsfr_avg);
+            one_annular_filter(halobox->halo_xray, source_box->filtered_xray, R_inner, R_outer,
+                               R_star, 4, &xray_avg, &fxray_avg);
             if (astro_options_global->USE_MINI_HALOS) {
-                one_annular_filter(halobox->halo_sfr_mini,
-                                   &(source_box->filtered_sfr_mini[R_ct * HII_TOT_NUM_PIXELS]),
-                                   R_inner, R_outer, R_star, filter_type, &sfr_avg_mini,
-                                   &fsfr_avg_mini);
+                one_annular_filter(halobox->halo_sfr_mini, source_box->filtered_sfr_mini, R_inner,
+                                   R_outer, R_star, filter_type, &sfr_avg_mini, &fsfr_avg_mini);
                 // In case of multiple scattering and mini-halos, we need to filter the SFRD fields
                 // again for the the LW feedback, as these photons travel in straight lines
                 if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                    one_annular_filter(halobox->halo_sfr,
-                                       &(source_box->filtered_sfr_lw[R_ct * HII_TOT_NUM_PIXELS]),
-                                       R_inner, R_outer, R_star, 4, &sfr_avg, &fsfr_avg);
-                    one_annular_filter(
-                        halobox->halo_sfr_mini,
-                        &(source_box->filtered_sfr_mini_lw[R_ct * HII_TOT_NUM_PIXELS]), R_inner,
-                        R_outer, R_star, 4, &sfr_avg_mini, &fsfr_avg_mini);
+                    one_annular_filter(halobox->halo_sfr, source_box->filtered_sfr_lw, R_inner,
+                                       R_outer, R_star, 4, &sfr_avg, &fsfr_avg);
+                    one_annular_filter(halobox->halo_sfr_mini, source_box->filtered_sfr_mini_lw,
+                                       R_inner, R_outer, R_star, 4, &sfr_avg_mini, &fsfr_avg_mini);
                 }
             }
 

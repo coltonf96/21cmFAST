@@ -533,8 +533,8 @@ def interpolate_and_evaluate_radiation_fields(
         R_outer = R_range[i].to("Mpc").value
 
         if zpp_avg[i] >= z_max:
-            box.filtered_sfr.value[i] = 0
-            box.filtered_xray.value[i] = 0
+            box.filtered_sfr.value[...] = 0
+            box.filtered_xray.value[...] = 0
             if inputs.astro_options.USE_MINI_HALOS:
                 if not compute_box:
                     # If the shell is beyond z_max, we compute the mean log10_Mcrit_MCG
@@ -550,10 +550,10 @@ def interpolate_and_evaluate_radiation_fields(
                     box.mean_log10_Mcrit_LW.value[i] = np.log10(
                         np.max([mturn_MCG, inputs.astro_params.M_TURN_STELLAR_FEEDBACK])
                     )
-                box.filtered_sfr_mini.value[i] = 0
+                box.filtered_sfr_mini.value[...] = 0
                 if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
-                    box.filtered_sfr_lw.value[i] = 0
-                    box.filtered_sfr_mini_lw.value[i] = 0
+                    box.filtered_sfr_lw.value[...] = 0
+                    box.filtered_sfr_mini_lw.value[...] = 0
             logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
             continue
 
@@ -572,13 +572,13 @@ def interpolate_and_evaluate_radiation_fields(
                     hbox_interp.get("halo_sfr_mini") == 0
                 )
             if sfr_allzero:
-                box.filtered_sfr.value[i] = 0
-                box.filtered_xray.value[i] = 0
+                box.filtered_sfr.value[...] = 0
+                box.filtered_xray.value[...] = 0
                 if inputs.astro_options.USE_MINI_HALOS:
-                    box.filtered_sfr_mini.value[i] = 0
+                    box.filtered_sfr_mini.value[...] = 0
                     if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
-                        box.filtered_sfr_lw.value[i] = 0
-                        box.filtered_sfr_mini_lw.value[i] = 0
+                        box.filtered_sfr_lw.value[...] = 0
+                        box.filtered_sfr_mini_lw.value[...] = 0
                 logger.debug(f"ignoring Radius {i} due to no stars")
                 continue
 
@@ -842,7 +842,6 @@ def compute_spin_temperature(
             # (and then xray_source_box will never be None).
             xray_source_box = XraySourceBox.new(redshift=redshift, inputs=inputs)
             shape = xray_source_box.dxheat_dt.shape
-            shape_4D = xray_source_box.filtered_sfr.shape
 
             required_arrays = TsBox.new(
                 redshift=0, inputs=inputs
@@ -851,14 +850,13 @@ def compute_spin_temperature(
             # Set the arrays to zero, or according to initial_density if the arrays are density fields
             for array in required_arrays:
                 # TODO: the 3D arrays below are defined as np.float64, but should be np.float32 - see https://github.com/21cmfast/21cmFAST/issues/744
-                array_shape = shape_4D if "filtered" in array else shape
                 dtype = np.float32 if "filtered" in array else np.float64
                 setattr(
                     xray_source_box,
                     array,
-                    Array(shape=array_shape, dtype=dtype)
+                    Array(shape=shape, dtype=dtype)
                     .initialize()
-                    .with_value(val=np.zeros(array_shape)),
+                    .with_value(val=np.zeros(shape)),
                 )
 
     # Set up the box without computing anything.

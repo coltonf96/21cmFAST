@@ -833,6 +833,10 @@ def _redshift_loop_generator(
                     cleanup=(cleanup and z == all_redshifts[-1]),
                 )
                 # Purge XraySourceBox because it's enormous
+                # TODO: now that XraySourceBox does not contain 4D arrays anymore,
+                #       it is not as huge as it was before, but it does contain some extra boxes that are no longer required
+                #       once the spin temperature is computed. These boxes however contain some interesting quantities (radiation fields!),
+                #       we should consider keeping them, but probably as part of working on https://github.com/21cmfast/21cmFAST/issues/642
                 if inputs.matter_options.lagrangian_source_grid:
                     this_xraysource.purge(force=True)
 
