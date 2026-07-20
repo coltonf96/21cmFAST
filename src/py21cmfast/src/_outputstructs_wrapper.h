@@ -82,8 +82,6 @@ typedef struct XraySourceBox {
     double *dstarLW_dt;
 
     double *mean_log10_Mcrit_LW;
-    double *mean_sfr;
-    double *mean_sfr_mini;
 } XraySourceBox;
 
 typedef struct TsBox {

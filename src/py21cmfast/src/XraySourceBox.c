@@ -136,13 +136,10 @@ int UpdateXraySourceBox(HaloBox *halobox, double R_inner, double R_outer, int R_
         one_annular_filter(halobox->halo_xray,
                            &(source_box->filtered_xray[R_ct * HII_TOT_NUM_PIXELS]), R_inner,
                            R_outer, R_star, 4, &xray_avg, &fxray_avg);
-        source_box->mean_sfr[R_ct] = fsfr_avg;
         if (astro_options_global->USE_MINI_HALOS) {
             one_annular_filter(halobox->halo_sfr_mini,
                                &(source_box->filtered_sfr_mini[R_ct * HII_TOT_NUM_PIXELS]), R_inner,
                                R_outer, R_star, filter_type, &sfr_avg_mini, &fsfr_avg_mini);
-            source_box->mean_sfr_mini[R_ct] = fsfr_avg_mini;
-            source_box->mean_log10_Mcrit_LW[R_ct] = halobox->log10_Mcrit_MCG_ave;
             // In case of multiple scattering and mini-halos, we need to filter the SFRD fields
             // again for the the LW feedback, as these photons travel in straight lines
             if (astro_options_global->LYA_MULTIPLE_SCATTERING) {

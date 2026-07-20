@@ -379,10 +379,13 @@ def compute_halo_grid(
 
 
 # TODO: make this more general and probably combine with the lightcone interp function
+# TODO: remove the compute_box argument, this is currently required because we call this function once for just computing the history of
+# log10_Mcrit_MCG_ave - see other comment about this in compute_xray_source_field.
 def interp_halo_boxes(
     halo_boxes: list[HaloBox],
-    fields: list[str],
+    interp_fields: list[str],
     redshift: float,
+    compute_box: bool,
 ) -> HaloBox:
     """
     Interpolate HaloBox history to the desired redshift.
@@ -396,10 +399,12 @@ def interp_halo_boxes(
     ----------
     halo_boxes : list of HaloBox instances
         The halobox history to be interpolated
-    fields: List of Strings
+    interp_fields: list[str]
         The properties of the haloboxes to be interpolated
     redshift : float
         The desired redshift of interpolation
+    compute_box : bool
+        Whether we need to compute the radiation field boxes in the C code or not.
 
     Returns
     -------
@@ -415,8 +420,8 @@ def interp_halo_boxes(
         raise ValueError(f"Invalid z_target {redshift} for redshift array {z_halos}")
 
     # If we do global evolution, no need to do that
-    if inputs.simulation_options.HII_DIM > 1:
-        arr_fields = [f for f in fields if f in halo_boxes[0].arrays]
+    if inputs.simulation_options.HII_DIM > 1 and compute_box:
+        arr_fields = [f for f in interp_fields if f in halo_boxes[0].arrays]
         computed = [box.ensure_arrays_computed(*arr_fields) for box in halo_boxes]
         if not all(computed):
             raise ValueError("Some of the HaloBox fields required are not computed")
@@ -434,7 +439,7 @@ def interp_halo_boxes(
     interp_param = (redshift - z_desc) / (z_prog - z_desc)
 
     # If we do global evolution, no need to do that
-    if inputs.simulation_options.HII_DIM > 1:
+    if inputs.simulation_options.HII_DIM > 1 and compute_box:
         # I set the box redshift to be the stored one so it is read properly into the ionize box
         # for the xray source it doesn't matter, also since it is not _compute()'d, it won't be cached
         check_output_consistency(
@@ -449,13 +454,14 @@ def interp_halo_boxes(
     hbox_out = HaloBox.new(redshift=redshift, inputs=inputs)
 
     # initialise the memory
-    hbox_out._init_arrays()
+    if compute_box:
+        hbox_out._init_arrays()
 
     # interpolate halo boxes in gridded SFR
     hbox_prog = halo_boxes[idx_prog]
     hbox_desc = halo_boxes[idx_desc]
 
-    for field in fields:
+    for field in interp_fields:
         field_desc = hbox_desc.get(field)
         field_prog = hbox_prog.get(field)
         interp_field = np.zeros_like(field_desc)
@@ -463,6 +469,116 @@ def interp_halo_boxes(
         hbox_out.set(field, interp_field)
 
     return hbox_out
+
+
+def interpolate_and_evaluate_radiation_fields(
+    inputs: InputParameters,
+    hboxes: list[HaloBox],
+    interp_fields: list[str],
+    R_range: np.ndarray,
+    zpp_avg: np.ndarray,
+    z_max: float,
+    compute_box: bool,
+    box: XraySourceBox,
+    R_star: float | None = None,
+) -> XraySourceBox:
+    """
+    Interpolate the halo boxes and evaluate the radiation fields.
+
+    Parameters
+    ----------
+    inputs: InputParameters
+        The input parameters specifying the run.
+    hboxes: list of HaloBox
+        The halo boxes to interpolate.
+    interp_fields : list[str]
+        The fields to interpolate and evaluate.
+    R_range: np.ndarray
+        The range of shell's radii to be integrated in order to evaluate the radiation fields.
+    zpp_avg: np.ndarray
+        The average redshifts for each shell.
+    z_max: float
+        The maximum redshift for the integration.
+        If a shell crosses this redshift, its contribution to the radiation fields is ignored.
+    compute_box: bool
+        Whether to evaluate the 3D boxes via the C code.
+    box: :class:`~XraySourceBox`
+        An object containing the radiation fields, before they had been computed.
+    R_star: float | None, optional
+        The comoving diffusion scale in the case of Lyman alpha multiple scattering.
+        Becomes relevant only when `LYA_MULTIPLE_SCATTERING` and `compute_box` are set to True.
+
+    Returns
+    -------
+    :class:`~XraySourceBox` :
+        An object containing the radiation fields, after they had been computed.
+    """
+    for i in range(inputs.astro_params.N_STEP_TS):
+        R_inner = R_range[i - 1].to("Mpc").value if i > 0 else 0
+        R_outer = R_range[i].to("Mpc").value
+
+        if zpp_avg[i] >= z_max:
+            box.filtered_sfr.value[i] = 0
+            box.filtered_xray.value[i] = 0
+            if inputs.astro_options.USE_MINI_HALOS:
+                if not compute_box:
+                    # If the shell is beyond z_max, we compute the mean log10_Mcrit_MCG
+                    # under the assumption of zero LW flux a constant v_cb, and no reionization feedback
+                    from ..wrapper import cfuncs
+
+                    mturn_MCG = cfuncs.get_molecular_cooling_threshold_with_feedbacks(
+                        inputs=inputs,
+                        redshifts=zpp_avg[i],
+                        J_LW_21=0.0,
+                        v_cb=inputs.cosmo_tables.V_CB_AVG,
+                    )
+                    box.mean_log10_Mcrit_LW.value[i] = np.log10(
+                        np.max([mturn_MCG, inputs.astro_params.M_TURN_STELLAR_FEEDBACK])
+                    )
+                box.filtered_sfr_mini.value[i] = 0
+                if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
+                    box.filtered_sfr_lw.value[i] = 0
+                    box.filtered_sfr_mini_lw.value[i] = 0
+            logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
+            continue
+
+        hbox_interp = interp_halo_boxes(
+            halo_boxes=hboxes[::-1],
+            interp_fields=interp_fields,
+            redshift=zpp_avg[i],
+            compute_box=compute_box,
+        )
+
+        if compute_box:
+            # if we have no halos we ignore the whole shell
+            sfr_allzero = np.all(hbox_interp.get("halo_sfr") == 0)
+            if inputs.astro_options.USE_MINI_HALOS:
+                sfr_allzero = sfr_allzero & np.all(
+                    hbox_interp.get("halo_sfr_mini") == 0
+                )
+            if sfr_allzero:
+                box.filtered_sfr.value[i] = 0
+                box.filtered_xray.value[i] = 0
+                if inputs.astro_options.USE_MINI_HALOS:
+                    box.filtered_sfr_mini.value[i] = 0
+                    if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
+                        box.filtered_sfr_lw.value[i] = 0
+                        box.filtered_sfr_mini_lw.value[i] = 0
+                logger.debug(f"ignoring Radius {i} due to no stars")
+                continue
+
+            box = box.compute(
+                halobox=hbox_interp,
+                R_inner=R_inner,
+                R_outer=R_outer,
+                R_ct=i,
+                R_star=R_star.to("Mpc").value,
+                allow_already_computed=True,
+            )
+        else:
+            box.mean_log10_Mcrit_LW.value[i] = hbox_interp.log10_Mcrit_MCG_ave
+
+    return box
 
 
 # NOTE: the current implementation of this box is very hacky, since I have trouble figuring out a way to _compute()
@@ -575,68 +691,53 @@ def compute_xray_source_field(
 
     interp_fields = ["halo_sfr", "halo_xray"]
     if inputs.astro_options.USE_MINI_HALOS:
-        interp_fields += ["halo_sfr_mini", "log10_Mcrit_MCG_ave"]
+        interp_fields += ["halo_sfr_mini"]
 
     # call the box the initialize the memory, since I give some values before computing
     box._init_arrays()
-    for i in range(inputs.astro_params.N_STEP_TS):
-        R_inner = R_range[i - 1].to("Mpc").value if i > 0 else 0
-        R_outer = R_range[i].to("Mpc").value
 
-        if zpp_avg[i] >= z_max:
-            box.filtered_sfr.value[i] = 0
-            box.filtered_xray.value[i] = 0
-            if inputs.astro_options.USE_MINI_HALOS:
-                # If the shell is beyond z_max, we set the SFR to zero and compute the mean log10_Mcrit_MCG
-                # under the assumption of zero LW flux a constant v_cb, and no reionization feedback
-                from ..wrapper import cfuncs
-
-                mturn_MCG = cfuncs.get_molecular_cooling_threshold_with_feedbacks(
-                    inputs=inputs,
-                    redshifts=zpp_avg[i],
-                    J_LW_21=0.0,
-                    v_cb=inputs.cosmo_tables.V_CB_AVG,
-                )
-                box.filtered_sfr_mini.value[i] = 0
-                box.mean_log10_Mcrit_LW.value[i] = np.log10(
-                    np.max([mturn_MCG, inputs.astro_params.M_TURN_STELLAR_FEEDBACK])
-                )
-                if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
-                    box.filtered_sfr_lw.value[i] = 0
-                    box.filtered_sfr_mini_lw.value[i] = 0
-            logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
-            continue
-
-        hbox_interp = interp_halo_boxes(
-            halo_boxes=hboxes[::-1],
-            fields=interp_fields,
-            redshift=zpp_avg[i],
+    # Get log10_Mcrit_MCG_ave for each shell
+    # TODO: The reason why this field is evaluated separately is because it is already required in setup_radiation_fields() in the C code,
+    # as it sets rad_setup->ave_log10_MturnLW. This array is mostly used for the old Eulerian source model calculations, which will be fixed
+    # in the future (see https://github.com/21cmfast/21cmFAST/issues/668), but it is still needed for the Lagrangian source model as well
+    # (specifically, in global_reion_properties) for two purposese:
+    #   (1) For computing the global Nion, which is used for the NO_LIGHT condition. Here however, note that only the first entry of
+    #       ave_log10_MturnLW is needed, namely for that computation we care about only the CURRENT global turnover mass, not its history.
+    #       This usage therefore does not require the full global array as we compute below.
+    #   (2) For computing the lower limit of the frequency integral (it is used in nu_tau_one_MINI, which is called by fill_freqint_tables).
+    #       Here, we ought to have the full history of the global turnover mass, since that lower limit depends on the frequency in which
+    #       the X-ray optical depth is unity. In order to compute the X-ray optical depth, we need to integrate over the history of the global
+    #       neutral volume filling factor, which is currently approximated by the global Nion (the code does something like x_HI = 1 - Nion/(1-x_e)).
+    #       Hence, the full history of the global turnover mass is needed in order to detemrine the history of x_HI, which is integrated in order to
+    #       get the X-ray optical depth, which is required for setting the lower limit for the frequency integral. In that context, note that the code
+    #       actually uses the global turnover mass at zpp (the redshift that corresponds to the shell), and not at zhat (the dummy integration variable
+    #       in the X-ray optical depth integral), which I believe is a MISTAKE/undocmented approximation. Anyway, the necessity for the full history of
+    #       the global turnover mass for setting the lower limit (as well evaluating the global turnover mass at zpp) should be fixed when addressing
+    #       https://github.com/21cmfast/21cmFAST/issues/659, where the global x_HI at zpp is taken from its history, as was evaluated by the reionization
+    #       code.
+    if inputs.astro_options.USE_MINI_HALOS:
+        box = interpolate_and_evaluate_radiation_fields(
+            inputs=inputs,
+            hboxes=hboxes,
+            interp_fields=["log10_Mcrit_MCG_ave"],
+            R_range=R_range,
+            zpp_avg=zpp_avg,
+            z_max=z_max,
+            compute_box=False,  # We don't want to use the C code at this stage
+            box=box,
         )
-
-        # if we have no halos we ignore the whole shell
-        sfr_allzero = np.all(hbox_interp.get("halo_sfr") == 0)
-        if inputs.astro_options.USE_MINI_HALOS:
-            sfr_allzero = sfr_allzero & np.all(hbox_interp.get("halo_sfr_mini") == 0)
-        if sfr_allzero:
-            box.filtered_sfr.value[i] = 0
-            box.filtered_xray.value[i] = 0
-            if inputs.astro_options.USE_MINI_HALOS:
-                box.filtered_sfr_mini.value[i] = 0
-                box.mean_log10_Mcrit_LW.value[i] = hbox_interp.log10_Mcrit_MCG_ave
-                if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
-                    box.filtered_sfr_lw.value[i] = 0
-                    box.filtered_sfr_mini_lw.value[i] = 0
-            logger.debug(f"ignoring Radius {i} due to no stars")
-            continue
-
-        box = box.compute(
-            halobox=hbox_interp,
-            R_inner=R_inner,
-            R_outer=R_outer,
-            R_ct=i,
-            R_star=R_star.to("Mpc").value,
-            allow_already_computed=True,
-        )
+    # interpolate the halo boxes and evaluate the radiation fields
+    box = interpolate_and_evaluate_radiation_fields(
+        inputs=inputs,
+        hboxes=hboxes,
+        interp_fields=interp_fields,
+        R_range=R_range,
+        zpp_avg=zpp_avg,
+        z_max=z_max,
+        R_star=R_star,
+        compute_box=True,  # Now we call the C function
+        box=box,
+    )
 
     # Sometimes we don't compute at all
     # (if the first zpp > z_max or there are no halos at max R)

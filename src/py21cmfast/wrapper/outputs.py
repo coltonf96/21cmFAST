@@ -1241,8 +1241,6 @@ class XraySourceBox(OutputStructZ):
     dstarLW_dt = _arrayfield(optional=True)
     dstarlya_cont_dt = _arrayfield(optional=True)
     dstarlya_inj_dt = _arrayfield(optional=True)
-    mean_sfr = _arrayfield()
-    mean_sfr_mini = _arrayfield(optional=True)
     mean_log10_Mcrit_LW = _arrayfield(optional=True)
 
     @classmethod
@@ -1283,16 +1281,12 @@ class XraySourceBox(OutputStructZ):
         out = {
             "filtered_sfr": Array(shape_4D, dtype=np.float32),
             "filtered_xray": Array(shape_4D, dtype=np.float32),
-            "mean_sfr": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
             "dxion_dt": Array(shape, dtype=np.float64),
             "dxlya_dt": Array(shape, dtype=np.float64),
             "dstarlya_dt": Array(shape, dtype=np.float64),
         }
         if inputs.astro_options.USE_MINI_HALOS:
             out["filtered_sfr_mini"] = Array(shape_4D, dtype=np.float32)
-            out["mean_sfr_mini"] = Array(
-                (inputs.astro_params.N_STEP_TS,), dtype=np.float64
-            )
             out["mean_log10_Mcrit_LW"] = Array(
                 (inputs.astro_params.N_STEP_TS,), dtype=np.float64
             )
