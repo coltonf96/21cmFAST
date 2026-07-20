@@ -1668,7 +1668,7 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
         setup_radiation_fields(redshift, perturbed_field_redshift, perturbed_field, source_box,
                                previous_spin_temp, ini_boxes, this_spin_temp, rad_setup);
         if (!rad_setup->NO_LIGHT) {
-            for (R_ct = astro_params_global->N_STEP_TS; R_ct--;) {
+            for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
                 accumulate_radiation_shell(redshift, rad_setup, source_box, R_ct);
             }
         }
