@@ -1242,6 +1242,7 @@ class XraySourceBox(OutputStructZ):
     dstarlya_cont_dt = _arrayfield(optional=True)
     dstarlya_inj_dt = _arrayfield(optional=True)
     mean_log10_Mcrit_LW = _arrayfield(optional=True)
+    Q_HI: float = attrs.field(default=1.0)
 
     @classmethod
     def new(cls, inputs: InputParameters, redshift: float, **kw) -> Self:
@@ -1312,32 +1313,58 @@ class XraySourceBox(OutputStructZ):
     def get_required_input_arrays(self, input_box: OutputStruct) -> list[str]:
         """Return all input arrays required to compute this object."""
         required = []
-        if not isinstance(input_box, HaloBox):
-            raise ValueError(f"{type(input_box)} is not an input required for HaloBox!")
+        if isinstance(input_box, InitialConditions):
+            if (
+                self.matter_options.V_CB_MODEL == "FLUCTS"
+                and self.astro_options.USE_MINI_HALOS
+            ):
+                required += ["lowres_vcb"]
+        elif isinstance(input_box, PerturbedField):
+            required += ["density"]
+        elif isinstance(input_box, TsBox):
+            required += ["xray_ionised_fraction"]
+            if self.astro_options.USE_MINI_HALOS:
+                required += ["J_21_LW"]
+        elif isinstance(input_box, HaloBox):
+            required += ["halo_sfr", "halo_xray"]
+            if self.astro_options.USE_MINI_HALOS:
+                required += ["halo_sfr_mini"]
+        else:
+            raise ValueError(
+                f"{type(input_box)} is not an input required for XraySourceBox!"
+            )
 
-        required += ["halo_sfr", "halo_xray"]
-        if self.astro_options.USE_MINI_HALOS:
-            required += ["halo_sfr_mini"]
         return required
 
     def compute(
         self,
         *,
+        redshift,
         halobox: HaloBox,
         R_inner,
         R_outer,
         R_ct,
         R_star,
+        cleanup,
+        perturbed_field: PerturbedField,
+        previous_spin_temp: TsBox,
+        initial_conditions: InitialConditions,
         allow_already_computed: bool = False,
     ):
         """Compute the function."""
         return self._compute(
             allow_already_computed,
+            redshift,
             halobox,
             R_inner,
             R_outer,
             R_ct,
             R_star,
+            cleanup,
+            perturbed_field.redshift,
+            perturbed_field,
+            previous_spin_temp,
+            initial_conditions,
         )
 
 

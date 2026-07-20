@@ -31,8 +31,10 @@ int ComputeBrightnessTemp(float redshift, TsBox *spin_temp, IonizedBox *ionized_
 int ComputeHaloBox(double redshift, InitialConditions *ini_boxes, HaloCatalog *halos,
                    TsBox *previous_spin_temp, IonizedBox *previous_ionize_box, HaloBox *grids);
 
-int UpdateXraySourceBox(HaloBox *halobox, double R_inner, double R_outer, int R_ct, double R_star,
-                        XraySourceBox *source_box);
+int UpdateXraySourceBox(float redshift, HaloBox *halobox, double R_inner, double R_outer, int R_ct,
+                        double R_star, short cleanup, float perturbed_field_redshift,
+                        PerturbedField *perturbed_field, TsBox *previous_spin_temp,
+                        InitialConditions *ini_boxes, XraySourceBox *source_box);
 /*--------------------------*/
 
 /* PHOTON CONSERVATION MODEL FUNCTIONS */

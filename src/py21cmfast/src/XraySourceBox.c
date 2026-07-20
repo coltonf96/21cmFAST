@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "SpinTemperatureBox.h"
 #include "cexcept.h"
 #include "debugging.h"
 #include "dft.h"
@@ -14,6 +15,10 @@
 #include "filtering.h"
 #include "indexing.h"
 #include "logger.h"
+
+// global pointer to the radiation fields setup struct. This is useful since we visit this module
+// several times per snapshot
+RadiationFieldsSetup *rad_setup = NULL;
 
 // NOTE: I've moved this to a function to help in simplicity, it is not clear whether it is faster
 //   to do all of one radii at once (more clustered FFT and larger thread blocks) or all of one box
@@ -118,55 +123,91 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
     fftwf_free(unfiltered_box);
 }
 
-int UpdateXraySourceBox(HaloBox *halobox, double R_inner, double R_outer, int R_ct, double R_star,
-                        XraySourceBox *source_box) {
+int UpdateXraySourceBox(float redshift, HaloBox *halobox, double R_inner, double R_outer, int R_ct,
+                        double R_star, short cleanup, float perturbed_field_redshift,
+                        PerturbedField *perturbed_field, TsBox *previous_spin_temp,
+                        InitialConditions *ini_boxes, XraySourceBox *source_box) {
     int status, filter_type;
     Try {
-        // the indexing needs these
-        filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING ? 5 : 4;
+        // If the redshift is above Z_HEAT_MAX, we skip the calculation of the radiation fields and
+        // return early. Note that setup_radiation_fields below requires previous_spin_temp, and it
+        // must be evaluated at least once for redshift > Z_HEAT_MAX, (as the highest node redshift
+        // cannot be below Z_HEAT_MAX) so by the time redshift < Z_HEAT_MAX we should have a valid
+        // previous_spin_temp to pass to setup_radiation_fields. I think this is already protected
+        // at the python level, but it's still good to have this guard here as well.
+        if (redshift >= simulation_options_global->Z_HEAT_MAX) {
+            LOG_DEBUG("Redshift %.3f is above Z_HEAT_MAX %.3f, skipping radiation field setup.",
+                      redshift, simulation_options_global->Z_HEAT_MAX);
+            return 0;
+        }
 
-        // only print once, since this is called for every R
-        if (R_ct == 0) LOG_DEBUG("starting XraySourceBox");
+        if (R_ct == 0) {
+            rad_setup = malloc(sizeof(RadiationFieldsSetup));
+            setup_radiation_fields(redshift, perturbed_field_redshift, source_box, rad_setup,
+                                   perturbed_field, previous_spin_temp, ini_boxes);
+            source_box->Q_HI = rad_setup->Q_HI_zp;
+        }
 
-        double sfr_avg, fsfr_avg, sfr_avg_mini = 0., fsfr_avg_mini = 0.;
-        double xray_avg, fxray_avg;
-        one_annular_filter(halobox->halo_sfr,
-                           &(source_box->filtered_sfr[R_ct * HII_TOT_NUM_PIXELS]), R_inner, R_outer,
-                           R_star, filter_type, &sfr_avg, &fsfr_avg);
-        one_annular_filter(halobox->halo_xray,
-                           &(source_box->filtered_xray[R_ct * HII_TOT_NUM_PIXELS]), R_inner,
-                           R_outer, R_star, 4, &xray_avg, &fxray_avg);
-        if (astro_options_global->USE_MINI_HALOS) {
-            one_annular_filter(halobox->halo_sfr_mini,
-                               &(source_box->filtered_sfr_mini[R_ct * HII_TOT_NUM_PIXELS]), R_inner,
-                               R_outer, R_star, filter_type, &sfr_avg_mini, &fsfr_avg_mini);
-            // In case of multiple scattering and mini-halos, we need to filter the SFRD fields
-            // again for the the LW feedback, as these photons travel in straight lines
-            if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                one_annular_filter(halobox->halo_sfr,
-                                   &(source_box->filtered_sfr_lw[R_ct * HII_TOT_NUM_PIXELS]),
-                                   R_inner, R_outer, R_star, 4, &sfr_avg, &fsfr_avg);
+        // If there are no stars, skip the calculation below
+        if (!rad_setup->NO_LIGHT) {
+            filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING ? 5 : 4;
+
+            // only print once, since this is called for every R
+            if (R_ct == 0) LOG_DEBUG("starting XraySourceBox");
+
+            double sfr_avg, fsfr_avg, sfr_avg_mini = 0., fsfr_avg_mini = 0.;
+            double xray_avg, fxray_avg;
+            one_annular_filter(halobox->halo_sfr,
+                               &(source_box->filtered_sfr[R_ct * HII_TOT_NUM_PIXELS]), R_inner,
+                               R_outer, R_star, filter_type, &sfr_avg, &fsfr_avg);
+            one_annular_filter(halobox->halo_xray,
+                               &(source_box->filtered_xray[R_ct * HII_TOT_NUM_PIXELS]), R_inner,
+                               R_outer, R_star, 4, &xray_avg, &fxray_avg);
+            if (astro_options_global->USE_MINI_HALOS) {
                 one_annular_filter(halobox->halo_sfr_mini,
-                                   &(source_box->filtered_sfr_mini_lw[R_ct * HII_TOT_NUM_PIXELS]),
-                                   R_inner, R_outer, R_star, 4, &sfr_avg_mini, &fsfr_avg_mini);
+                                   &(source_box->filtered_sfr_mini[R_ct * HII_TOT_NUM_PIXELS]),
+                                   R_inner, R_outer, R_star, filter_type, &sfr_avg_mini,
+                                   &fsfr_avg_mini);
+                // In case of multiple scattering and mini-halos, we need to filter the SFRD fields
+                // again for the the LW feedback, as these photons travel in straight lines
+                if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
+                    one_annular_filter(halobox->halo_sfr,
+                                       &(source_box->filtered_sfr_lw[R_ct * HII_TOT_NUM_PIXELS]),
+                                       R_inner, R_outer, R_star, 4, &sfr_avg, &fsfr_avg);
+                    one_annular_filter(
+                        halobox->halo_sfr_mini,
+                        &(source_box->filtered_sfr_mini_lw[R_ct * HII_TOT_NUM_PIXELS]), R_inner,
+                        R_outer, R_star, 4, &sfr_avg_mini, &fsfr_avg_mini);
+                }
+            }
+
+            if (R_ct == astro_params_global->N_STEP_TS - 1) LOG_DEBUG("finished XraySourceBox");
+
+            LOG_SUPER_DEBUG("R = [%8.3f - %8.3f] | mean filtered sfr  = %10.3e unfiltered %10.3e",
+                            R_inner, R_outer, fsfr_avg, sfr_avg);
+            LOG_ULTRA_DEBUG("mean filtered xray = %10.3e unfiltered %10.3e", fxray_avg, xray_avg);
+            if (astro_options_global->USE_MINI_HALOS) {
+                LOG_SUPER_DEBUG(
+                    "MINI: filtered sfr %10.3e unfiltered %10.3e log10_Mcrit_LW = %10.3e",
+                    fsfr_avg_mini, sfr_avg_mini, source_box->mean_log10_Mcrit_LW[R_ct]);
+            }
+
+            // Given the filtered emissivities, we accumulate the contribution of this shell to the
+            // radiation fields
+            accumulate_radiation_shell(redshift, rad_setup, source_box, R_ct);
+
+            // free fftwf only if we have a full box (with more than one cell)
+            if (simulation_options_global->HII_DIM > 1) {
+                fftwf_forget_wisdom();
+                fftwf_cleanup_threads();
+                fftwf_cleanup();
             }
         }
 
-        if (R_ct == astro_params_global->N_STEP_TS - 1) LOG_DEBUG("finished XraySourceBox");
-
-        LOG_SUPER_DEBUG("R = [%8.3f - %8.3f] | mean filtered sfr  = %10.3e unfiltered %10.3e",
-                        R_inner, R_outer, fsfr_avg, sfr_avg);
-        LOG_ULTRA_DEBUG("mean filtered xray = %10.3e unfiltered %10.3e", fxray_avg, xray_avg);
-        if (astro_options_global->USE_MINI_HALOS) {
-            LOG_SUPER_DEBUG("MINI: filtered sfr %10.3e unfiltered %10.3e log10_Mcrit_LW = %10.3e",
-                            fsfr_avg_mini, sfr_avg_mini, source_box->mean_log10_Mcrit_LW[R_ct]);
-        }
-
-        // free fftwf only if we have a full box (with more than one cell)
-        if (simulation_options_global->HII_DIM > 1) {
-            fftwf_forget_wisdom();
-            fftwf_cleanup_threads();
-            fftwf_cleanup();
+        // free the rad_setup struct only after the last R_ct has been processed
+        if (R_ct == astro_params_global->N_STEP_TS - 1) {
+            free_rad_setup(rad_setup, cleanup);
+            rad_setup = NULL;
         }
     }  // End of try
     Catch(status) { return (status); }

@@ -471,7 +471,14 @@ def interp_halo_boxes(
     return hbox_out
 
 
+# TODO: I gave this function an initializer decorator since it can call the C code, and if some curious users will try to
+# call it directly they will run into segfaul. Also here, I set the argument to be sigma=True, but this is an "overkill"
+# and should be set to broadcast_inputs=True once https://github.com/21cmfast/21cmFAST/issues/668 is fixed.
+# TODO: perturbed_field and initial_conditions should be removed from the function's signature once
+# https://github.com/21cmfast/21cmFAST/issues/668 is fixed.
+@init_c_state(sigma=True)
 def interpolate_and_evaluate_radiation_fields(
+    redshift: float,
     inputs: InputParameters,
     hboxes: list[HaloBox],
     interp_fields: list[str],
@@ -480,6 +487,10 @@ def interpolate_and_evaluate_radiation_fields(
     z_max: float,
     compute_box: bool,
     box: XraySourceBox,
+    perturbed_field: PerturbedField | None = None,
+    previous_spin_temp: TsBox | None = None,
+    initial_conditions: InitialConditions | None = None,
+    cleanup: bool | None = None,
     R_star: float | None = None,
 ) -> XraySourceBox:
     """
@@ -487,6 +498,8 @@ def interpolate_and_evaluate_radiation_fields(
 
     Parameters
     ----------
+    redshift: float
+        The redshift at which to evaluate the radiation fields.
     inputs: InputParameters
         The input parameters specifying the run.
     hboxes: list of HaloBox
@@ -502,6 +515,8 @@ def interpolate_and_evaluate_radiation_fields(
         If a shell crosses this redshift, its contribution to the radiation fields is ignored.
     compute_box: bool
         Whether to evaluate the 3D boxes via the C code.
+    previous_spin_temp: :class:`~TsBox`
+        The spin temperature box at the previous redshift. Becomes relevant only when redshift < Z_HEAT_MAX.
     box: :class:`~XraySourceBox`
         An object containing the radiation fields, before they had been computed.
     R_star: float | None, optional
@@ -568,11 +583,16 @@ def interpolate_and_evaluate_radiation_fields(
                 continue
 
             box = box.compute(
+                redshift=redshift,
                 halobox=hbox_interp,
                 R_inner=R_inner,
                 R_outer=R_outer,
                 R_ct=i,
                 R_star=R_star.to("Mpc").value,
+                perturbed_field=perturbed_field,
+                previous_spin_temp=previous_spin_temp,
+                initial_conditions=initial_conditions,
+                cleanup=cleanup,
                 allow_already_computed=True,
             )
         else:
@@ -584,14 +604,20 @@ def interpolate_and_evaluate_radiation_fields(
 # NOTE: the current implementation of this box is very hacky, since I have trouble figuring out a way to _compute()
 #   over multiple redshifts in a nice way using this wrapper.
 # TODO: if we move some code to jax or similar I think this would be one of the first candidates (just filling out some filtered grids)
+# TODO: I changed the argument of the initializer below to sigma=True (instead of broadcast_inputs=True). This is because we now call
+# setup_radiation_fields() in the C code that corresponds to this function. However, sigma is required only in the old Eulerian source models.
+# This should be changed back once https://github.com/21cmfast/21cmFAST/issues/668 is fixed.
 @single_field_func
-@init_c_state(broadcast_inputs=True)
+@init_c_state(sigma=True)
 def compute_xray_source_field(
     *,
-    initial_conditions: InitialConditions,
     hboxes: list[HaloBox],
     redshift: float,
     previous_ionize_box: IonizedBox | None = None,
+    perturbed_field: PerturbedField | None = None,
+    previous_spin_temp: TsBox | None = None,
+    initial_conditions: InitialConditions | None = None,
+    cleanup: bool = True,
 ) -> XraySourceBox:
     r"""
     Compute filtered grid of SFR for use in spin temperature calculation.
@@ -604,13 +630,12 @@ def compute_xray_source_field(
 
     Parameters
     ----------
-    initial_conditions : :class:`~InitialConditions`
-        The initial conditions of the run. The user and cosmo params
     hboxes: Sequence of :class:`~HaloBox` instances
         This contains the list of Halobox instances which are used to create this source field
     previous_ionize_box: :class:`IonizedBox` or None
         An ionized box at higher redshift. This is only used if `LYA_MULTIPLE_SCATTERING` is true.
-
+    previous_spin_temp: :class:`TsBox` or None
+        The spin temperature box at the previous redshift. Becomes relevant only when redshift < Z_HEAT_MAX.
 
     Returns
     -------
@@ -717,6 +742,7 @@ def compute_xray_source_field(
     #       code.
     if inputs.astro_options.USE_MINI_HALOS:
         box = interpolate_and_evaluate_radiation_fields(
+            redshift=redshift,
             inputs=inputs,
             hboxes=hboxes,
             interp_fields=["log10_Mcrit_MCG_ave"],
@@ -728,6 +754,7 @@ def compute_xray_source_field(
         )
     # interpolate the halo boxes and evaluate the radiation fields
     box = interpolate_and_evaluate_radiation_fields(
+        redshift=redshift,
         inputs=inputs,
         hboxes=hboxes,
         interp_fields=interp_fields,
@@ -736,6 +763,10 @@ def compute_xray_source_field(
         z_max=z_max,
         R_star=R_star,
         compute_box=True,  # Now we call the C function
+        perturbed_field=perturbed_field,
+        previous_spin_temp=previous_spin_temp,
+        initial_conditions=initial_conditions,
+        cleanup=cleanup,
         box=box,
     )
 

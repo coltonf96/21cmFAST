@@ -697,24 +697,6 @@ void init_first_Ts(TsBox *box, float *dens, float z, float zp) {
     }
 }
 
-typedef struct RadiationFieldsSetup {
-    double *ave_log10_MturnLW;
-    double inverse_growth_factor_z;
-    double x_e_ave_p;
-    double Q_HI_zp;
-    int NO_LIGHT;
-    // TODO: remove these fields below when https://github.com/21cmfast/21cmFAST/issues/668 is fixed
-    // (they are needed only for the Eulerian source model)
-    ScalingConstants sc;
-    fftwf_complex *delta_unfiltered;
-    fftwf_complex *log10_Mcrit_LW_unfiltered;
-    double *ave_dens;
-    double *min_log10_MturnLW;
-    double *max_log10_MturnLW;
-    double *mean_sfr_zpp;
-    double *mean_sfr_zpp_mini;
-} RadiationFieldsSetup;
-
 // calculate the global properties used for making the frequency integrals,
 //   used for filling factor, ST_OVER_PS, and NO_LIGHT
 int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
@@ -1205,9 +1187,9 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
    https://github.com/21cmfast/21cmFAST/issues/668 is solved.
 */
 void setup_radiation_fields(float redshift, float perturbed_field_redshift,
-                            PerturbedField *perturbed_field, XraySourceBox *source_box,
-                            TsBox *previous_spin_temp, InitialConditions *ini_boxes,
-                            TsBox *this_spin_temp, RadiationFieldsSetup *rad_setup) {
+                            XraySourceBox *source_box, RadiationFieldsSetup *rad_setup,
+                            PerturbedField *perturbed_field, TsBox *previous_spin_temp,
+                            InitialConditions *ini_boxes) {
     debug_printed = 0;
     int R_ct;
     index_huge box_ct;
@@ -1305,7 +1287,6 @@ void setup_radiation_fields(float redshift, float perturbed_field_redshift,
     //   ion_eff) global SFRD at each filter radius (numerator of ST_over_PS factor)
 
     rad_setup->NO_LIGHT = global_reion_properties(redshift, rad_setup);
-    this_spin_temp->Q_HI = rad_setup->Q_HI_zp;
 
 #pragma omp parallel private(box_ct) num_threads(simulation_options_global -> N_THREADS)
     {
@@ -1662,17 +1643,27 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                           redshift);
             return (0);
         }
-        int R_ct;
 
-        RadiationFieldsSetup *rad_setup = malloc(sizeof(RadiationFieldsSetup));
-        setup_radiation_fields(redshift, perturbed_field_redshift, perturbed_field, source_box,
-                               previous_spin_temp, ini_boxes, this_spin_temp, rad_setup);
-        if (!rad_setup->NO_LIGHT) {
-            for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
-                accumulate_radiation_shell(redshift, rad_setup, source_box, R_ct);
+        // We compute the radiation fields in this module only for the old Eulerian source models.
+        // For the new Lagrangian source models, the radiation fields are computed in
+        // XraySourceBox.c.
+        // TODO: Remove the following lines once https://github.com/21cmfast/21cmFAST/issues/668 is
+        // fixed.
+        if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+            int R_ct;
+            RadiationFieldsSetup *rad_setup = malloc(sizeof(RadiationFieldsSetup));
+            setup_radiation_fields(redshift, perturbed_field_redshift, source_box, rad_setup,
+                                   perturbed_field, previous_spin_temp, ini_boxes);
+            this_spin_temp->Q_HI = rad_setup->Q_HI_zp;
+            if (!rad_setup->NO_LIGHT) {
+                for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
+                    accumulate_radiation_shell(redshift, rad_setup, source_box, R_ct);
+                }
             }
+            free_rad_setup(rad_setup, cleanup);
+        } else {
+            this_spin_temp->Q_HI = source_box->Q_HI;
         }
-        free_rad_setup(rad_setup, cleanup);
 
         // set the constants calculated once per snapshot
         struct spintemp_from_sfr_prefactors zp_consts;
