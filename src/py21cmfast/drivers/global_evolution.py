@@ -86,6 +86,7 @@ def compute_global_reionization_at_z(
     dzdt = -(1.0 + redshift) * inputs.cosmo_params.cosmo.H(redshift)
     ionisation_rate_G12 = np.abs(dQdz * dzdt)
     ionisation_rate_G12 = np.squeeze(ionisation_rate_G12.to("1/s").value)
+    ionisation_rate_G12 *= 1e12  # convert to units of 10^{-12} s^{-1}
     # TODO: is there a more clever way to estimate global z_reion?
     z_reion = -1.0 if Q_HI > 0.0 else redshift
 
