@@ -285,7 +285,7 @@ def compute_rms(
         kr_small = kr[kr < 1.0e-3]
         W_k[kr < 1.0e-3] = 1.0 - 3.0 * (kr_small**2) / 10.0
 
-        integrand = priomordial_PS * (transfer * W_k) ** 2
+        integrand = priomordial_PS * (transfer.value * W_k) ** 2
         var = intg.simpson(integrand, x=np.log(k_transfer / k_transfer.unit))
         rms_list.append(np.sqrt(var))
     # NOTE: intg.simpson removes the unit information, which is why we multiply by the unit when we return
