@@ -524,7 +524,7 @@ def test_bad_input_structs(default_input_struct_ts):
     # TsBox
     with pytest.raises(
         ValueError,
-        match="xray_source_box is required for SOURCE_MODEL",
+        match="radiation_fields is required for SOURCE_MODEL",
     ):
         p21c.compute_spin_temperature(
             initial_conditions=ic,
@@ -577,10 +577,10 @@ def test_bad_input_structs(default_input_struct_ts):
 
 @pytest.mark.parametrize("lya_multiple_scattering", [False, True])
 @pytest.mark.parametrize("use_mini_halos", [False, True])
-def test_xray_source_field_with_zero_sfr(
+def test_radiation_fields_with_zero_sfr(
     default_input_struct_ts, redshift, use_mini_halos, lya_multiple_scattering
 ):
-    """Test compute_xray_source_field with zero sfr boxes."""
+    """Test compute_radiation_fields with zero sfr boxes."""
     inputs = default_input_struct_ts.evolve_input_structs(
         USE_MINI_HALOS=use_mini_halos,
         RECOMB_MODEL="inhomogeneous",
@@ -608,7 +608,7 @@ def test_xray_source_field_with_zero_sfr(
         if use_mini_halos:
             hbox.log10_Mcrit_MCG_ave = 5.0
 
-    xraysource = p21c.compute_xray_source_field(
+    radiation_fields = p21c.compute_radiation_fields(
         initial_conditions=ics,
         hboxes=[hbox1, hbox2],
         redshift=redshift,
@@ -623,4 +623,4 @@ def test_xray_source_field_with_zero_sfr(
             output_fields += ["filtered_sfr_lw", "filtered_sfr_mini_lw"]
 
     for field in output_fields:
-        assert np.all(getattr(xraysource, field).value == 0.0)
+        assert np.all(getattr(radiation_fields, field).value == 0.0)

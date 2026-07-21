@@ -64,7 +64,7 @@ typedef struct HaloBox {
     double log10_Mcrit_MCG_ave;
 } HaloBox;
 
-typedef struct XraySourceBox {
+typedef struct RadiationFields {
     float *filtered_sfr;
     float *filtered_xray;
     float *filtered_sfr_mini;
@@ -83,7 +83,7 @@ typedef struct XraySourceBox {
 
     double *mean_log10_Mcrit_LW;
     double Q_HI;
-} XraySourceBox;
+} RadiationFields;
 
 typedef struct TsBox {
     float *spin_temperature;

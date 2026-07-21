@@ -1223,11 +1223,11 @@ class HaloBox(OutputStructZ):
 
 
 @attrs.define(slots=False, kw_only=True)
-class XraySourceBox(OutputStructZ):
+class RadiationFields(OutputStructZ):
     """A class containing the filtered sfr grids."""
 
     _meta = False
-    _c_compute_function = lib.UpdateXraySourceBox
+    _c_compute_function = lib.UpdateRadiationFields
 
     filtered_sfr = _arrayfield()
     filtered_sfr_mini = _arrayfield(optional=True)
@@ -1246,7 +1246,7 @@ class XraySourceBox(OutputStructZ):
 
     @classmethod
     def new(cls, inputs: InputParameters, redshift: float, **kw) -> Self:
-        """Create a new XraySourceBox instance with the given inputs.
+        """Create a new RadiationFields instance with the given inputs.
 
         Parameters
         ----------
@@ -1257,7 +1257,7 @@ class XraySourceBox(OutputStructZ):
 
         Other Parameters
         ----------------
-        All other parameters are passed through to the :class:`XraySourceBox`
+        All other parameters are passed through to the :class:`RadiationFields`
         constructor.
         """
         shape = (inputs.simulation_options.HII_DIM,) * 2 + (
@@ -1320,7 +1320,7 @@ class XraySourceBox(OutputStructZ):
                 required += ["halo_sfr_mini"]
         else:
             raise ValueError(
-                f"{type(input_box)} is not an input required for XraySourceBox!"
+                f"{type(input_box)} is not an input required for RadiationFields!"
             )
 
         return required
@@ -1451,7 +1451,7 @@ class TsBox(OutputStructZ):
             ]
             if self.astro_options.USE_MINI_HALOS:
                 required += ["J_21_LW"]
-        elif isinstance(input_box, XraySourceBox):
+        elif isinstance(input_box, RadiationFields):
             if self.matter_options.lagrangian_source_grid:
                 required += ["filtered_sfr", "filtered_xray"]
                 if self.astro_options.USE_MINI_HALOS:
@@ -1474,7 +1474,7 @@ class TsBox(OutputStructZ):
         *,
         cleanup: bool,
         perturbed_field: PerturbedField,
-        xray_source_box: XraySourceBox,
+        radiation_fields: RadiationFields,
         prev_spin_temp: TsBox,
         ics: InitialConditions,
         allow_already_computed: bool = False,
@@ -1487,7 +1487,7 @@ class TsBox(OutputStructZ):
             perturbed_field.redshift,
             cleanup,
             perturbed_field,
-            xray_source_box,
+            radiation_fields,
             prev_spin_temp,
             ics,
         )
