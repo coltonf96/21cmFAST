@@ -43,6 +43,10 @@ void setup_radiation_fields(float redshift, float perturbed_field_redshift,
 void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
                                 RadiationFields *radiation_fields, int R_ct);
 
+void multiply_radiation_fields_by_constants(float redshift, RadiationFields *radiation_fields,
+                                            float perturbed_field_redshift,
+                                            PerturbedField *perturbed_field);
+
 void free_rad_setup(RadiationFieldsSetup *rad_setup, short cleanup);
 
 #endif

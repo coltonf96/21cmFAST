@@ -1230,6 +1230,91 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
     }  // end of pragma loop
 }
 
+/*
+    This function multiplies the radiation fields by the appropriate constants to convert them to
+   physical meaningful quantities. The radiation fields are all given by an integral over the past
+   source emissivities. Numerically, this integral is evaluated via the trapezoidal rule, which is
+   done by summing over the contributions from each redshift shell. For efficiency, the constants
+   are not included in the integral, but rather multiplied at the end (outside the integral). This
+   function does that multiplication.
+*/
+void multiply_radiation_fields_by_constants(float redshift, RadiationFields *radiation_fields,
+                                            float perturbed_field_redshift,
+                                            PerturbedField *perturbed_field) {
+    double luminosity_converstion_factor, xray_prefactor, volunit_inv, Nb_zp, lya_star_prefactor;
+    double growth_factor_z, growth_factor_zp, inverse_growth_factor_z;
+
+    if (fabs(astro_params_global->X_RAY_SPEC_INDEX - 1.0) < 1e-6) {
+        luminosity_converstion_factor =
+            (astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz *
+            log(astro_params_global->NU_X_BAND_MAX / (astro_params_global->NU_X_THRESH));
+        luminosity_converstion_factor = 1. / luminosity_converstion_factor;
+    } else {
+        luminosity_converstion_factor =
+            pow((astro_params_global->NU_X_BAND_MAX) * physconst.eV_to_Hz,
+                1. - (astro_params_global->X_RAY_SPEC_INDEX)) -
+            pow((astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz,
+                1. - (astro_params_global->X_RAY_SPEC_INDEX));
+        luminosity_converstion_factor = 1. / luminosity_converstion_factor;
+        luminosity_converstion_factor *=
+            pow((astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz,
+                -(astro_params_global->X_RAY_SPEC_INDEX)) *
+            (1 - (astro_params_global->X_RAY_SPEC_INDEX));
+    }
+    // Finally, convert to the correct units. physconst.eV_to_Hz*physconst.h_p as only want to
+    // divide by eV -> erg (owing to the definition of Luminosity)
+    luminosity_converstion_factor /= (physconst.h_p);
+
+    // for halos, we just want the SFR -> X-ray part
+    // NOTE: compared to Mesinger+11: (1+zpp)^2 (1+zp) -> (1+zp)^3
+    //(1+z)^3 is here because we don't want it in the
+    // star lya (already in zpp integrand)
+    xray_prefactor = luminosity_converstion_factor /
+                     ((astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz) * physconst.c_cms *
+                     pow(1 + redshift, astro_params_global->X_RAY_SPEC_INDEX + 3);
+    Nb_zp = N_b0 * (1 + redshift) * (1 + redshift) * (1 + redshift);
+    // converts SFR density -> stellar baryon density + prefactors
+    lya_star_prefactor = physconst.c_cms / (4.0 * M_PI) * physconst.Msun / physconst.m_p *
+                         (1 - 0.75 * cosmo_params_global->Y_He);
+
+    growth_factor_z = dicke(perturbed_field_redshift);
+    inverse_growth_factor_z = 1. / growth_factor_z;
+    growth_factor_zp = dicke(redshift);
+
+    // converts the grid emissivity unit to per cm-3
+    if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
+        volunit_inv = pow(physconst.cm_per_Mpc, -3);
+    } else {
+        volunit_inv = cosmo_params_global->OMb * RHOcrit * pow(physconst.cm_per_Mpc, -3);
+    }
+
+    index_huge box_ct;
+#pragma omp parallel private(box_ct) num_threads(simulation_options_global -> N_THREADS)
+    {
+        double curr_delta;
+#pragma omp for
+        for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
+            curr_delta =
+                perturbed_field->density[box_ct] * growth_factor_zp * inverse_growth_factor_z;
+            if (astro_options_global->USE_X_RAY_HEATING) {
+                radiation_fields->dxheat_dt[box_ct] *= xray_prefactor * volunit_inv;
+            }
+            radiation_fields->dxion_dt[box_ct] *= xray_prefactor * volunit_inv;
+            radiation_fields->dxlya_dt[box_ct] *=
+                xray_prefactor * volunit_inv * Nb_zp * (1 + curr_delta);
+            radiation_fields->dstarlya_dt[box_ct] *= lya_star_prefactor * volunit_inv;
+            if (astro_options_global->USE_MINI_HALOS) {
+                radiation_fields->dstarLW_dt[box_ct] *=
+                    lya_star_prefactor * volunit_inv * physconst.h_p * 1e21;
+            }
+            if (astro_options_global->USE_LYA_HEATING) {
+                radiation_fields->dstarlya_cont_dt[box_ct] *= lya_star_prefactor * volunit_inv;
+                radiation_fields->dstarlya_inj_dt[box_ct] *= lya_star_prefactor * volunit_inv;
+            }
+        }
+    }
+}
+
 void free_rad_setup(RadiationFieldsSetup *rad_setup, short cleanup) {
     if (astro_options_global->USE_MINI_HALOS) {
         free(rad_setup->ave_log10_MturnLW);
@@ -1394,8 +1479,12 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
             radiation_fields->Q_HI = rad_setup->Q_HI_zp;
         }
 
-        // Free the rad_setup struct
+        // Multiply the radiation fields by constants and free the rad_setup struct
         else if (mode == UPDATE_RADIATION_FIELDS_CLEANUP) {
+            if (!rad_setup->NO_LIGHT) {
+                multiply_radiation_fields_by_constants(redshift, radiation_fields,
+                                                       perturbed_field_redshift, perturbed_field);
+            }
             free_rad_setup(rad_setup, cleanup);
             rad_setup = NULL;
         }

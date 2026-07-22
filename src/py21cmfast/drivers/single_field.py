@@ -804,7 +804,8 @@ def compute_radiation_fields(
             radiation_fields=radiation_fields,
         )
 
-        # Cleanup the radiation fields in the C code (with mode="cleanup")
+        # Cleanup the radiation fields in the C code (with mode="cleanup"). This also multiplies the radiation fields by appropriate
+        # constants to make them physically meaningful quantities.
         # TODO: this is a bit hacky. A better solution would be to have RadiationFieldsSetup that we have in the C code as an
         #       OutputStructZ, but I suggeste to wait with this solution until https://github.com/21cmfast/21cmFAST/issues/668 is
         #       fixed, as RadiationFieldsSetup would become much simpler

@@ -61,7 +61,6 @@ void init_first_Ts(TsBox *box, float *dens, float z, float zp) {
 
 // These are factors which only need to be calculated once per redshift
 struct spintemp_from_sfr_prefactors {
-    double xray_prefactor;       // convserion from SFRD to xray emissivity
     double Trad;                 // CMB temperature
     double Trad_inv;             // inverse for acceleration (/ slower than * sometimes)
     double Ts_prefactor;         // some volume factors
@@ -70,8 +69,6 @@ struct spintemp_from_sfr_prefactors {
     double dcomp_dzp_prefactor;  // compton prefactor
     double Nb_zp;                // physical critical density (baryons)
     double N_zp;                 // physical critical density
-    double lya_star_prefactor;   // converts SFR density -> stellar baryon density + prefactors
-    double volunit_inv;          // inverse volume unit for cm^-3 conversion
     double hubble_zp;            // H(z)
     double growth_zp;
     double dgrowth_dzp;
@@ -79,41 +76,12 @@ struct spintemp_from_sfr_prefactors {
 };
 
 void set_zp_consts(double zp, struct spintemp_from_sfr_prefactors *consts) {
-    // constant prefactors for the R_ct==0 part
-    double luminosity_converstion_factor;
+    // constant prefactors
     double gamma_alpha;
     consts->growth_zp = dicke(zp);
     consts->hubble_zp = hubble(zp);
     consts->dgrowth_dzp = ddicke_dz(zp);
     consts->dt_dzp = dtdz(zp);
-    if (fabs(astro_params_global->X_RAY_SPEC_INDEX - 1.0) < 1e-6) {
-        luminosity_converstion_factor =
-            (astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz *
-            log(astro_params_global->NU_X_BAND_MAX / (astro_params_global->NU_X_THRESH));
-        luminosity_converstion_factor = 1. / luminosity_converstion_factor;
-    } else {
-        luminosity_converstion_factor =
-            pow((astro_params_global->NU_X_BAND_MAX) * physconst.eV_to_Hz,
-                1. - (astro_params_global->X_RAY_SPEC_INDEX)) -
-            pow((astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz,
-                1. - (astro_params_global->X_RAY_SPEC_INDEX));
-        luminosity_converstion_factor = 1. / luminosity_converstion_factor;
-        luminosity_converstion_factor *=
-            pow((astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz,
-                -(astro_params_global->X_RAY_SPEC_INDEX)) *
-            (1 - (astro_params_global->X_RAY_SPEC_INDEX));
-    }
-    // Finally, convert to the correct units. physconst.eV_to_Hz*physconst.h_p as only want to
-    // divide by eV -> erg (owing to the definition of Luminosity)
-    luminosity_converstion_factor /= (physconst.h_p);
-
-    // for halos, we just want the SFR -> X-ray part
-    // NOTE: compared to Mesinger+11: (1+zpp)^2 (1+zp) -> (1+zp)^3
-    //(1+z)^3 is here because we don't want it in the
-    // star lya (already in zpp integrand)
-    consts->xray_prefactor =
-        luminosity_converstion_factor / ((astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz) *
-        physconst.c_cms * pow(1 + zp, astro_params_global->X_RAY_SPEC_INDEX + 3);
 
     // Required quantities for calculating the IGM spin temperature
     // Note: These used to be determined in evolveInt (and other functions). But I moved them all
@@ -146,23 +114,12 @@ void set_zp_consts(double zp, struct spintemp_from_sfr_prefactors *consts) {
     // source & absorber since its downscattered x-ray
     consts->Nb_zp = N_b0 * (1 + zp) * (1 + zp) * (1 + zp);
     consts->N_zp = No * (1 + zp) * (1 + zp) * (1 + zp);  // used for CMB
-    // converts SFR density -> stellar baryon density + prefactors
-    consts->lya_star_prefactor = physconst.c_cms / (4.0 * M_PI) * physconst.Msun / physconst.m_p *
-                                 (1 - 0.75 * cosmo_params_global->Y_He);
 
-    // converts the grid emissivity unit to per cm-3
-    if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
-        consts->volunit_inv = pow(physconst.cm_per_Mpc, -3);
-    } else {
-        consts->volunit_inv = cosmo_params_global->OMb * RHOcrit * pow(physconst.cm_per_Mpc, -3);
-    }
-
-    LOG_DEBUG("Set zp consts xr %.2e Tr %.2e Ts %.2e xa %.2e xc %.2e cm %.2e",
-              consts->xray_prefactor, consts->Trad, consts->Ts_prefactor,
-              consts->xa_tilde_prefactor, consts->xc_inverse, consts->dcomp_dzp_prefactor);
-    LOG_DEBUG("Nb %.2e la %.2e vi %.2e D %.2e H %.2e dD %.2e dt %.2e", consts->Nb_zp,
-              consts->lya_star_prefactor, consts->volunit_inv, consts->growth_zp, consts->hubble_zp,
-              consts->dgrowth_dzp, consts->dt_dzp);
+    LOG_DEBUG("Set zp consts Tr %.2e Ts %.2e xa %.2e xc %.2e cm %.2e", consts->Trad,
+              consts->Ts_prefactor, consts->xa_tilde_prefactor, consts->xc_inverse,
+              consts->dcomp_dzp_prefactor);
+    LOG_DEBUG("Nb %.2e D %.2e H %.2e dD %.2e dt %.2e", consts->Nb_zp, consts->growth_zp,
+              consts->hubble_zp, consts->dgrowth_dzp, consts->dt_dzp);
 }
 
 // All the cell-dependent stuff needed to calculate Ts
@@ -405,6 +362,8 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                 for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
                     accumulate_radiation_shell(redshift, rad_setup, radiation_fields, R_ct);
                 }
+                multiply_radiation_fields_by_constants(redshift, radiation_fields,
+                                                       perturbed_field_redshift, perturbed_field);
             }
             free_rad_setup(rad_setup, cleanup);
         } else {
@@ -447,27 +406,19 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
 
                 // Add prefactors that don't depend on R
                 if (astro_options_global->USE_X_RAY_HEATING) {
-                    rad.dxheat_dt = radiation_fields->dxheat_dt[box_ct] * zp_consts.xray_prefactor *
-                                    zp_consts.volunit_inv;
+                    rad.dxheat_dt = radiation_fields->dxheat_dt[box_ct];
                 }
-                rad.dxion_dt = radiation_fields->dxion_dt[box_ct] * zp_consts.xray_prefactor *
-                               zp_consts.volunit_inv;
+                rad.dxion_dt = radiation_fields->dxion_dt[box_ct];
                 // 2 density terms from downscattering absorbers
-                rad.dxlya_dt = radiation_fields->dxlya_dt[box_ct] * zp_consts.xray_prefactor *
-                               zp_consts.volunit_inv * zp_consts.Nb_zp * (1 + curr_delta);
-                rad.dstarlya_dt = radiation_fields->dstarlya_dt[box_ct] *
-                                  zp_consts.lya_star_prefactor * zp_consts.volunit_inv;
+                rad.dxlya_dt = radiation_fields->dxlya_dt[box_ct];
+                rad.dstarlya_dt = radiation_fields->dstarlya_dt[box_ct];
                 rad.delta = curr_delta;
                 if (astro_options_global->USE_MINI_HALOS) {
-                    rad.dstarLW_dt = radiation_fields->dstarLW_dt[box_ct] *
-                                     zp_consts.lya_star_prefactor * zp_consts.volunit_inv *
-                                     physconst.h_p * 1e21;
+                    rad.dstarLW_dt = radiation_fields->dstarLW_dt[box_ct];
                 }
                 if (astro_options_global->USE_LYA_HEATING) {
-                    rad.dstarlya_cont_dt = radiation_fields->dstarlya_cont_dt[box_ct] *
-                                           zp_consts.lya_star_prefactor * zp_consts.volunit_inv;
-                    rad.dstarlya_inj_dt = radiation_fields->dstarlya_inj_dt[box_ct] *
-                                          zp_consts.lya_star_prefactor * zp_consts.volunit_inv;
+                    rad.dstarlya_cont_dt = radiation_fields->dstarlya_cont_dt[box_ct];
+                    rad.dstarlya_inj_dt = radiation_fields->dstarlya_inj_dt[box_ct];
                 }
                 rad.prev_Ts = previous_spin_temp->spin_temperature[box_ct];
                 rad.prev_Tk = previous_spin_temp->kinetic_temp_neutral[box_ct];
