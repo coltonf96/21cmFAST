@@ -1367,9 +1367,10 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
 }
 
 int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, double R_outer,
-                          int R_ct, double R_star, short cleanup, float perturbed_field_redshift,
-                          PerturbedField *perturbed_field, TsBox *previous_spin_temp,
-                          InitialConditions *ini_boxes, RadiationFields *radiation_fields) {
+                          int R_ct, double R_star, short mode, short cleanup,
+                          float perturbed_field_redshift, PerturbedField *perturbed_field,
+                          TsBox *previous_spin_temp, InitialConditions *ini_boxes,
+                          RadiationFields *radiation_fields) {
     int status, filter_type;
     Try {
         // If the redshift is above Z_HEAT_MAX, we skip the calculation of the radiation fields and
@@ -1384,70 +1385,83 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
             return 0;
         }
 
-        // If this is the first R_ct, we need to do some setup for the radiation fields, before we
-        // integrate contributions from shells.
-        if (R_ct == 0) {
+        // We need to do some setup for the radiation fields, before we integrate contributions from
+        // shells.
+        if (mode == UPDATE_RADIATION_FIELDS_SETUP) {
             rad_setup = malloc(sizeof(RadiationFieldsSetup));
             setup_radiation_fields(redshift, perturbed_field_redshift, radiation_fields, rad_setup,
                                    perturbed_field, previous_spin_temp, ini_boxes);
             radiation_fields->Q_HI = rad_setup->Q_HI_zp;
         }
 
-        // If there are no stars, skip the calculation below
-        if (!rad_setup->NO_LIGHT) {
-            filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING ? 5 : 4;
-
-            // only print once, since this is called for every R
-            if (R_ct == 0) LOG_DEBUG("starting RadiationFields");
-
-            double sfr_avg, fsfr_avg, sfr_avg_mini = 0., fsfr_avg_mini = 0.;
-            double xray_avg, fxray_avg;
-            one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr, R_inner, R_outer,
-                               R_star, filter_type, &sfr_avg, &fsfr_avg);
-            one_annular_filter(halobox->halo_xray, radiation_fields->filtered_xray, R_inner,
-                               R_outer, R_star, 4, &xray_avg, &fxray_avg);
-            if (astro_options_global->USE_MINI_HALOS) {
-                one_annular_filter(halobox->halo_sfr_mini, radiation_fields->filtered_sfr_mini,
-                                   R_inner, R_outer, R_star, filter_type, &sfr_avg_mini,
-                                   &fsfr_avg_mini);
-                // In case of multiple scattering and mini-halos, we need to filter the SFRD fields
-                // again for the the LW feedback, as these photons travel in straight lines
-                if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                    one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr_lw,
-                                       R_inner, R_outer, R_star, 4, &sfr_avg, &fsfr_avg);
-                    one_annular_filter(halobox->halo_sfr_mini,
-                                       radiation_fields->filtered_sfr_mini_lw, R_inner, R_outer,
-                                       R_star, 4, &sfr_avg_mini, &fsfr_avg_mini);
-                }
-            }
-
-            if (R_ct == astro_params_global->N_STEP_TS - 1) LOG_DEBUG("finished RadiationFields");
-
-            LOG_SUPER_DEBUG("R = [%8.3f - %8.3f] | mean filtered sfr  = %10.3e unfiltered %10.3e",
-                            R_inner, R_outer, fsfr_avg, sfr_avg);
-            LOG_ULTRA_DEBUG("mean filtered xray = %10.3e unfiltered %10.3e", fxray_avg, xray_avg);
-            if (astro_options_global->USE_MINI_HALOS) {
-                LOG_SUPER_DEBUG(
-                    "MINI: filtered sfr %10.3e unfiltered %10.3e log10_Mcrit_LW = %10.3e",
-                    fsfr_avg_mini, sfr_avg_mini, radiation_fields->mean_log10_Mcrit_LW[R_ct]);
-            }
-
-            // Given the filtered emissivities, we accumulate the contribution of this shell to the
-            // radiation fields
-            accumulate_radiation_shell(redshift, rad_setup, radiation_fields, R_ct);
-
-            // free fftwf only if we have a full box (with more than one cell)
-            if (simulation_options_global->HII_DIM > 1) {
-                fftwf_forget_wisdom();
-                fftwf_cleanup_threads();
-                fftwf_cleanup();
-            }
-        }
-
-        // free the rad_setup struct only after the last R_ct has been processed
-        if (R_ct == astro_params_global->N_STEP_TS - 1) {
+        // Free the rad_setup struct
+        else if (mode == UPDATE_RADIATION_FIELDS_CLEANUP) {
             free_rad_setup(rad_setup, cleanup);
             rad_setup = NULL;
+        }
+
+        // If we are in the evaluation mode, we calculate the contribution from this shell to the
+        // radiation fields
+        else if (mode == UPDATE_RADIATION_FIELDS_EVAL) {
+            // If there are no stars, skip the calculation below
+            if (!rad_setup->NO_LIGHT) {
+                filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING ? 5 : 4;
+
+                // only print once, since this is called for every R
+                if (R_ct == 0) LOG_DEBUG("starting RadiationFields");
+
+                double sfr_avg, fsfr_avg, sfr_avg_mini = 0., fsfr_avg_mini = 0.;
+                double xray_avg, fxray_avg;
+                one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr, R_inner,
+                                   R_outer, R_star, filter_type, &sfr_avg, &fsfr_avg);
+                one_annular_filter(halobox->halo_xray, radiation_fields->filtered_xray, R_inner,
+                                   R_outer, R_star, 4, &xray_avg, &fxray_avg);
+                if (astro_options_global->USE_MINI_HALOS) {
+                    one_annular_filter(halobox->halo_sfr_mini, radiation_fields->filtered_sfr_mini,
+                                       R_inner, R_outer, R_star, filter_type, &sfr_avg_mini,
+                                       &fsfr_avg_mini);
+                    // In case of multiple scattering and mini-halos, we need to filter the SFRD
+                    // fields again for the the LW feedback, as these photons travel in straight
+                    // lines
+                    if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
+                        one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr_lw,
+                                           R_inner, R_outer, R_star, 4, &sfr_avg, &fsfr_avg);
+                        one_annular_filter(halobox->halo_sfr_mini,
+                                           radiation_fields->filtered_sfr_mini_lw, R_inner, R_outer,
+                                           R_star, 4, &sfr_avg_mini, &fsfr_avg_mini);
+                    }
+                }
+
+                if (R_ct == astro_params_global->N_STEP_TS - 1)
+                    LOG_DEBUG("finished RadiationFields");
+
+                LOG_SUPER_DEBUG(
+                    "R = [%8.3f - %8.3f] | mean filtered sfr  = %10.3e unfiltered %10.3e", R_inner,
+                    R_outer, fsfr_avg, sfr_avg);
+                LOG_ULTRA_DEBUG("mean filtered xray = %10.3e unfiltered %10.3e", fxray_avg,
+                                xray_avg);
+                if (astro_options_global->USE_MINI_HALOS) {
+                    LOG_SUPER_DEBUG(
+                        "MINI: filtered sfr %10.3e unfiltered %10.3e log10_Mcrit_LW = %10.3e",
+                        fsfr_avg_mini, sfr_avg_mini, radiation_fields->mean_log10_Mcrit_LW[R_ct]);
+                }
+
+                // Given the filtered emissivities, we accumulate the contribution of this shell to
+                // the radiation fields
+                accumulate_radiation_shell(redshift, rad_setup, radiation_fields, R_ct);
+
+                // free fftwf only if we have a full box (with more than one cell)
+                // TODO: Should we call the following at every shell, or only after
+                // UpdateRadiationFields is no longer called in this snapshot?
+                if (simulation_options_global->HII_DIM > 1) {
+                    fftwf_forget_wisdom();
+                    fftwf_cleanup_threads();
+                    fftwf_cleanup();
+                }
+            }
+        } else {
+            LOG_ERROR("Invalid mode %d passed to UpdateRadiationFields", mode);
+            Throw(ValueError);
         }
     }  // End of try
     Catch(status) { return (status); }

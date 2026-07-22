@@ -428,7 +428,7 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
         growth_factor_zp = dicke(redshift);
         dzp = redshift - prev_redshift;
 
-#pragma omp parallel private(box_ct)
+#pragma omp parallel private(box_ct) num_threads(simulation_options_global -> N_THREADS)
         {
             double curr_delta;
             struct Ts_cell ts_cell;
