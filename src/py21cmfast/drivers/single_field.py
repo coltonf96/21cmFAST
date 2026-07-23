@@ -893,7 +893,7 @@ def compute_spin_temperature(
             # TODO: this logic will have to be changed in the future once https://github.com/21cmfast/21cmFAST/issues/668 is solved
             # (and then radiation_fields will never be None).
             radiation_fields = RadiationFields.new(redshift=redshift, inputs=inputs)
-            shape = radiation_fields.dxheat_dt.shape
+            shape = radiation_fields.xray_heating_rate.shape
 
             required_arrays = TsBox.new(
                 redshift=0, inputs=inputs
@@ -901,7 +901,7 @@ def compute_spin_temperature(
 
             # Set the arrays to zero
             for array in required_arrays:
-                # TODO: the arrays below are defined as np.float64, but should be np.float32 - see https://github.com/21cmfast/21cmFAST/issues/744
+                # TODO: the radiation arrays below are defined as np.float64, but should be np.float32 - see https://github.com/21cmfast/21cmFAST/issues/744
                 dtype = np.float32 if "filtered" in array else np.float64
                 setattr(
                     radiation_fields,

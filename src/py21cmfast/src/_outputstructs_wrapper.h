@@ -73,13 +73,13 @@ typedef struct RadiationFields {
 
     // TODO: these arrays are defined as double, but should be float - see
     // https://github.com/21cmfast/21cmFAST/issues/744
-    double *dxheat_dt;
-    double *dxion_dt;
-    double *dxlya_dt;
-    double *dstarlya_dt;
-    double *dstarlya_cont_dt;
-    double *dstarlya_inj_dt;
-    double *dstarLW_dt;
+    double *xray_heating_rate;
+    double *xray_ionization_rate;
+    double *xray_lya_flux;
+    double *lya_flux_continuum_injected;
+    double *lya_flux_continuum;
+    double *lya_flux_injected;
+    double *lyw_flux;
 
     double *mean_log10_Mcrit_LW;
     double Q_HI;

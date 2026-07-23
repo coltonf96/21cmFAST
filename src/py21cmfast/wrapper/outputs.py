@@ -1234,13 +1234,13 @@ class RadiationFields(OutputStructZ):
     filtered_xray = _arrayfield()
     filtered_sfr_lw = _arrayfield(optional=True)
     filtered_sfr_mini_lw = _arrayfield(optional=True)
-    dxheat_dt = _arrayfield(optional=True)
-    dxion_dt = _arrayfield()
-    dxlya_dt = _arrayfield()
-    dstarlya_dt = _arrayfield()
-    dstarLW_dt = _arrayfield(optional=True)
-    dstarlya_cont_dt = _arrayfield(optional=True)
-    dstarlya_inj_dt = _arrayfield(optional=True)
+    xray_heating_rate = _arrayfield(optional=True)
+    xray_ionization_rate = _arrayfield()
+    xray_lya_flux = _arrayfield()
+    lya_flux_continuum_injected = _arrayfield()
+    lyw_flux = _arrayfield(optional=True)
+    lya_flux_continuum = _arrayfield(optional=True)
+    lya_flux_injected = _arrayfield(optional=True)
     mean_log10_Mcrit_LW = _arrayfield(optional=True)
     Q_HI: float = attrs.field(default=1.0)
 
@@ -1271,26 +1271,26 @@ class RadiationFields(OutputStructZ):
         out = {
             "filtered_sfr": Array(shape, dtype=np.float32),
             "filtered_xray": Array(shape, dtype=np.float32),
-            "dxion_dt": Array(shape, dtype=np.float64),
-            "dxlya_dt": Array(shape, dtype=np.float64),
-            "dstarlya_dt": Array(shape, dtype=np.float64),
+            "xray_ionization_rate": Array(shape, dtype=np.float64),
+            "xray_lya_flux": Array(shape, dtype=np.float64),
+            "lya_flux_continuum_injected": Array(shape, dtype=np.float64),
         }
         if inputs.astro_options.USE_MINI_HALOS:
             out["filtered_sfr_mini"] = Array(shape, dtype=np.float32)
             out["mean_log10_Mcrit_LW"] = Array(
                 (inputs.astro_params.N_STEP_TS,), dtype=np.float64
             )
-            out["dstarLW_dt"] = Array(shape, dtype=np.float64)
+            out["lyw_flux"] = Array(shape, dtype=np.float64)
             if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
                 out["filtered_sfr_lw"] = Array(shape, dtype=np.float32)
                 out["filtered_sfr_mini_lw"] = Array(shape, dtype=np.float32)
 
         if inputs.astro_options.USE_X_RAY_HEATING:
-            out["dxheat_dt"] = Array(shape, dtype=np.float64)
+            out["xray_heating_rate"] = Array(shape, dtype=np.float64)
 
         if inputs.astro_options.USE_LYA_HEATING:
-            out["dstarlya_cont_dt"] = Array(shape, dtype=np.float64)
-            out["dstarlya_inj_dt"] = Array(shape, dtype=np.float64)
+            out["lya_flux_continuum"] = Array(shape, dtype=np.float64)
+            out["lya_flux_injected"] = Array(shape, dtype=np.float64)
 
         return cls(
             inputs=inputs,
@@ -1460,12 +1460,16 @@ class TsBox(OutputStructZ):
                     required += ["filtered_sfr_mini"]
             else:
                 if self.astro_options.USE_X_RAY_HEATING:
-                    required += ["dxheat_dt"]
-                required += ["dxion_dt", "dxlya_dt", "dstarlya_dt"]
+                    required += ["xray_heating_rate"]
+                required += [
+                    "xray_ionization_rate",
+                    "xray_lya_flux",
+                    "lya_flux_continuum_injected",
+                ]
                 if self.astro_options.USE_MINI_HALOS:
-                    required += ["dstarLW_dt"]
+                    required += ["lyw_flux"]
                 if self.astro_options.USE_LYA_HEATING:
-                    required += ["dstarlya_cont_dt", "dstarlya_inj_dt"]
+                    required += ["lya_flux_continuum", "lya_flux_injected"]
         else:
             raise ValueError(f"{type(input_box)} is not an input required for TsBox!")
 

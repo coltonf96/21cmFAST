@@ -1151,22 +1151,22 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
             // Evaluate the radiation fields by adding the contribution from this shell
             // (R_ct) This implements trapezoidal integration over the shells
             if (astro_options_global->USE_X_RAY_HEATING) {
-                radiation_fields->dxheat_dt[box_ct] += xray_sfr * freq_int_heat;
+                radiation_fields->xray_heating_rate[box_ct] += xray_sfr * freq_int_heat;
             }
-            radiation_fields->dxion_dt[box_ct] += xray_sfr * freq_int_ion;
-            radiation_fields->dxlya_dt[box_ct] += xray_sfr * freq_int_lya;
-            radiation_fields->dstarlya_dt[box_ct] +=
+            radiation_fields->xray_ionization_rate[box_ct] += xray_sfr * freq_int_ion;
+            radiation_fields->xray_lya_flux[box_ct] += xray_sfr * freq_int_lya;
+            radiation_fields->lya_flux_continuum_injected[box_ct] +=
                 sfr_term * dstarlya_dt_prefactor[R_ct] + sfr_term_mini * starlya_factor_mini;
             if (astro_options_global->USE_MINI_HALOS) {
-                radiation_fields->dstarLW_dt[box_ct] +=
+                radiation_fields->lyw_flux[box_ct] +=
                     sfr_term_lw * dstarlyLW_dt_prefactor[R_ct] +
                     sfr_term_mini_lw * dstarlyLW_dt_prefactor_MINI[R_ct];
             }
             if (astro_options_global->USE_LYA_HEATING) {
-                radiation_fields->dstarlya_cont_dt[box_ct] +=
+                radiation_fields->lya_flux_continuum[box_ct] +=
                     sfr_term * dstarlya_cont_dt_prefactor[R_ct] +
                     sfr_term_mini * lyacont_factor_mini;
-                radiation_fields->dstarlya_inj_dt[box_ct] +=
+                radiation_fields->lya_flux_injected[box_ct] +=
                     sfr_term * dstarlya_inj_dt_prefactor[R_ct] + sfr_term_mini * lyainj_factor_mini;
             }
 
@@ -1209,21 +1209,24 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
                             avg_fix_term_MINI * astro_params_global->F_STAR7_MINI);
 
                 if (astro_options_global->USE_X_RAY_HEATING) {
-                    LOG_SUPER_DEBUG("xh %.2e | xi %.2e | xl %.2e | sl %.2e",
-                                    radiation_fields->dxheat_dt[box_ct] / astro_params_global->L_X,
-                                    radiation_fields->dxion_dt[box_ct] / astro_params_global->L_X,
-                                    radiation_fields->dxlya_dt[box_ct] / astro_params_global->L_X,
-                                    radiation_fields->dstarlya_dt[box_ct]);
+                    LOG_SUPER_DEBUG(
+                        "xh %.2e | xi %.2e | xl %.2e | sl %.2e",
+                        radiation_fields->xray_heating_rate[box_ct] / astro_params_global->L_X,
+                        radiation_fields->xray_ionization_rate[box_ct] / astro_params_global->L_X,
+                        radiation_fields->xray_lya_flux[box_ct] / astro_params_global->L_X,
+                        radiation_fields->lya_flux_continuum_injected[box_ct]);
                 } else {
-                    LOG_SUPER_DEBUG("xi %.2e | xl %.2e | sl %.2e",
-                                    radiation_fields->dxion_dt[box_ct] / astro_params_global->L_X,
-                                    radiation_fields->dxlya_dt[box_ct] / astro_params_global->L_X,
-                                    radiation_fields->dstarlya_dt[box_ct]);
+                    LOG_SUPER_DEBUG(
+                        "xi %.2e | xl %.2e | sl %.2e",
+                        radiation_fields->xray_ionization_rate[box_ct] / astro_params_global->L_X,
+                        radiation_fields->xray_lya_flux[box_ct] / astro_params_global->L_X,
+                        radiation_fields->lya_flux_continuum_injected[box_ct]);
                 }
 
                 if (astro_options_global->USE_LYA_HEATING)
-                    LOG_SUPER_DEBUG("ct %.2e | ij %.2e", radiation_fields->dstarlya_cont_dt[box_ct],
-                                    radiation_fields->dstarlya_inj_dt[box_ct]);
+                    LOG_SUPER_DEBUG("ct %.2e | ij %.2e",
+                                    radiation_fields->lya_flux_continuum[box_ct],
+                                    radiation_fields->lya_flux_injected[box_ct]);
             }
 #endif
         }  // end of box_ct loop
@@ -1240,7 +1243,8 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
 */
 void multiply_radiation_fields_by_constants(float redshift, RadiationFields *radiation_fields,
                                             float perturbed_field_redshift,
-                                            PerturbedField *perturbed_field) {
+                                            PerturbedField *perturbed_field,
+                                            TsBox *previous_spin_temp) {
     double luminosity_converstion_factor, xray_prefactor, volunit_inv, Nb_zp, lya_star_prefactor;
     double growth_factor_z, growth_factor_zp, inverse_growth_factor_z;
 
@@ -1291,25 +1295,29 @@ void multiply_radiation_fields_by_constants(float redshift, RadiationFields *rad
     index_huge box_ct;
 #pragma omp parallel private(box_ct) num_threads(simulation_options_global -> N_THREADS)
     {
-        double curr_delta;
+        double curr_delta, prev_xe;
 #pragma omp for
         for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
             curr_delta =
                 perturbed_field->density[box_ct] * growth_factor_zp * inverse_growth_factor_z;
+            prev_xe = previous_spin_temp->xray_ionised_fraction[box_ct];
             if (astro_options_global->USE_X_RAY_HEATING) {
-                radiation_fields->dxheat_dt[box_ct] *= xray_prefactor * volunit_inv;
+                radiation_fields->xray_heating_rate[box_ct] *=
+                    xray_prefactor * volunit_inv * 2.0 / 3.0 / physconst.k_B / (1.0 + prev_xe);
+                ;
             }
-            radiation_fields->dxion_dt[box_ct] *= xray_prefactor * volunit_inv;
-            radiation_fields->dxlya_dt[box_ct] *=
+            radiation_fields->xray_ionization_rate[box_ct] *= xray_prefactor * volunit_inv;
+            radiation_fields->xray_lya_flux[box_ct] *=
                 xray_prefactor * volunit_inv * Nb_zp * (1 + curr_delta);
-            radiation_fields->dstarlya_dt[box_ct] *= lya_star_prefactor * volunit_inv;
+            radiation_fields->lya_flux_continuum_injected[box_ct] *=
+                lya_star_prefactor * volunit_inv;
             if (astro_options_global->USE_MINI_HALOS) {
-                radiation_fields->dstarLW_dt[box_ct] *=
+                radiation_fields->lyw_flux[box_ct] *=
                     lya_star_prefactor * volunit_inv * physconst.h_p * 1e21;
             }
             if (astro_options_global->USE_LYA_HEATING) {
-                radiation_fields->dstarlya_cont_dt[box_ct] *= lya_star_prefactor * volunit_inv;
-                radiation_fields->dstarlya_inj_dt[box_ct] *= lya_star_prefactor * volunit_inv;
+                radiation_fields->lya_flux_continuum[box_ct] *= lya_star_prefactor * volunit_inv;
+                radiation_fields->lya_flux_injected[box_ct] *= lya_star_prefactor * volunit_inv;
             }
         }
     }
@@ -1483,7 +1491,8 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
         else if (mode == UPDATE_RADIATION_FIELDS_CLEANUP) {
             if (!rad_setup->NO_LIGHT) {
                 multiply_radiation_fields_by_constants(redshift, radiation_fields,
-                                                       perturbed_field_redshift, perturbed_field);
+                                                       perturbed_field_redshift, perturbed_field,
+                                                       previous_spin_temp);
             }
             free_rad_setup(rad_setup, cleanup);
             rad_setup = NULL;

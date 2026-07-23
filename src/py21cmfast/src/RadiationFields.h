@@ -45,7 +45,8 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
 
 void multiply_radiation_fields_by_constants(float redshift, RadiationFields *radiation_fields,
                                             float perturbed_field_redshift,
-                                            PerturbedField *perturbed_field);
+                                            PerturbedField *perturbed_field,
+                                            TsBox *previous_spin_temp);
 
 void free_rad_setup(RadiationFieldsSetup *rad_setup, short cleanup);
 

@@ -123,14 +123,14 @@ void set_zp_consts(double zp, struct spintemp_from_sfr_prefactors *consts) {
 }
 
 // All the cell-dependent stuff needed to calculate Ts
-struct Box_rad_terms {
-    double dxion_dt;
-    double dxheat_dt;
-    double dxlya_dt;
-    double dstarlya_dt;
-    double dstarLW_dt;
-    double dstarlya_cont_dt;
-    double dstarlya_inj_dt;
+struct local_rad_terms {
+    double xray_ionization_rate;
+    double xray_heating_rate;
+    double xray_lya_flux;
+    double lya_flux_continuum_injected;
+    double lyw_flux;
+    double lya_flux_continuum;
+    double lya_flux_injected;
     double delta;
     double prev_Ts;
     double prev_Tk;
@@ -148,7 +148,7 @@ struct Ts_cell {
 // Function for calculating the Ts box outputs quickly by using pre-calculated constants
 //   as much as possible
 struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefactors *consts,
-                           struct Box_rad_terms *rad) {
+                           struct local_rad_terms *rad) {
     // Now we can solve the evolution equations  //
     struct Ts_cell output;
     double tau21, xCMB, dxion_sink_dt, dxe_dzp, dadia_dzp, dspec_dzp, dcomp_dzp, dxheat_dzp;
@@ -173,7 +173,7 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
     dxion_sink_dt = alpha_A(rad->prev_Tk) * astro_params_global->CLUMPING_FACTOR * rad->prev_xe *
                     rad->prev_xe * H_FRAC * consts->Nb_zp * (1. + rad->delta);
 
-    dxe_dzp = consts->dt_dzp * (rad->dxion_dt - dxion_sink_dt);
+    dxe_dzp = consts->dt_dzp * (rad->xray_ionization_rate - dxion_sink_dt);
 
     // Temperature components //
     // Adiabatic heating/cooling from structure formation
@@ -193,8 +193,7 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
     // X-ray heating
     dxheat_dzp = 0.;
     if (astro_options_global->USE_X_RAY_HEATING) {
-        dxheat_dzp =
-            rad->dxheat_dt * consts->dt_dzp * 2.0 / 3.0 / physconst.k_B / (1.0 + rad->prev_xe);
+        dxheat_dzp = rad->xray_heating_rate * consts->dt_dzp;
     }
     // CMB heating rate
     dCMBheat_dzp = 0.;
@@ -224,9 +223,9 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
         }
         Ndot_alpha_cont = (4. * M_PI * physconst.nu_Ly_alpha) /
                           (consts->Nb_zp * (1. + rad->delta)) / (1. + zp) / physconst.c_cms *
-                          rad->dstarlya_cont_dt;
+                          rad->lya_flux_continuum;
         Ndot_alpha_inj = (4. * M_PI * physconst.nu_Ly_alpha) / (consts->Nb_zp * (1. + rad->delta)) /
-                         (1. + zp) / physconst.c_cms * rad->dstarlya_inj_dt;
+                         (1. + zp) / physconst.c_cms * rad->lya_flux_injected;
         eps_Lya_cont =
             -Ndot_alpha_cont * E_continuum * (2. / 3. / physconst.k_B / (1. + rad->prev_xe));
         eps_Lya_inj =
@@ -262,9 +261,9 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
 
     output.x_e = x_e;
     output.Tk = Tk;
-    output.J_21_LW = astro_options_global->USE_MINI_HALOS ? rad->dstarLW_dt : 0.;
+    output.J_21_LW = astro_options_global->USE_MINI_HALOS ? rad->lyw_flux : 0.;
 
-    double J_alpha_tot = rad->dstarlya_dt + rad->dxlya_dt;
+    double J_alpha_tot = rad->lya_flux_continuum_injected + rad->xray_lya_flux;
 
     // JD: I'm leaving these as comments in case I'm wrong, but there's NO WAY a compiler doesn't
     // know the fastest way to invert a number
@@ -363,7 +362,8 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                     accumulate_radiation_shell(redshift, rad_setup, radiation_fields, R_ct);
                 }
                 multiply_radiation_fields_by_constants(redshift, radiation_fields,
-                                                       perturbed_field_redshift, perturbed_field);
+                                                       perturbed_field_redshift, perturbed_field,
+                                                       previous_spin_temp);
             }
             free_rad_setup(rad_setup, cleanup);
         } else {
@@ -380,7 +380,7 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
         double dzp;
         double J_alpha_ave, xheat_ave, xion_ave, Ts_ave, Tk_ave, x_e_ave;
         J_alpha_ave = xheat_ave = xion_ave = Ts_ave = Tk_ave = x_e_ave = 0;
-        double J_LW_ave = 0., eps_lya_cont_ave = 0, eps_lya_inj_ave = 0;
+        double J_LW_ave = 0., lya_flux_continuum_ave = 0, lya_flux_injected_ave = 0;
 
         growth_factor_z = dicke(perturbed_field_redshift);
         inverse_growth_factor_z = 1. / growth_factor_z;
@@ -391,9 +391,9 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
         {
             double curr_delta;
             struct Ts_cell ts_cell;
-            struct Box_rad_terms rad;
+            struct local_rad_terms local_rad;
 #pragma omp for reduction(+ : J_alpha_ave, xheat_ave, xion_ave, Ts_ave, Tk_ave, x_e_ave, \
-                              eps_lya_cont_ave, eps_lya_inj_ave)
+                              lya_flux_continuum_ave, lya_flux_injected_ave)
             for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
                 curr_delta =
                     perturbed_field->density[box_ct] * growth_factor_zp * inverse_growth_factor_z;
@@ -404,27 +404,28 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                     curr_delta = -1 + FRACT_FLOAT_ERR;
                 }
 
-                // Add prefactors that don't depend on R
+                // set the local radiation fields for this cell
                 if (astro_options_global->USE_X_RAY_HEATING) {
-                    rad.dxheat_dt = radiation_fields->dxheat_dt[box_ct];
+                    local_rad.xray_heating_rate = radiation_fields->xray_heating_rate[box_ct];
                 }
-                rad.dxion_dt = radiation_fields->dxion_dt[box_ct];
-                // 2 density terms from downscattering absorbers
-                rad.dxlya_dt = radiation_fields->dxlya_dt[box_ct];
-                rad.dstarlya_dt = radiation_fields->dstarlya_dt[box_ct];
-                rad.delta = curr_delta;
+                local_rad.xray_ionization_rate = radiation_fields->xray_ionization_rate[box_ct];
+                local_rad.xray_lya_flux = radiation_fields->xray_lya_flux[box_ct];
+                local_rad.lya_flux_continuum_injected =
+                    radiation_fields->lya_flux_continuum_injected[box_ct];
+                local_rad.delta = curr_delta;
                 if (astro_options_global->USE_MINI_HALOS) {
-                    rad.dstarLW_dt = radiation_fields->dstarLW_dt[box_ct];
+                    local_rad.lyw_flux = radiation_fields->lyw_flux[box_ct];
                 }
                 if (astro_options_global->USE_LYA_HEATING) {
-                    rad.dstarlya_cont_dt = radiation_fields->dstarlya_cont_dt[box_ct];
-                    rad.dstarlya_inj_dt = radiation_fields->dstarlya_inj_dt[box_ct];
+                    local_rad.lya_flux_continuum = radiation_fields->lya_flux_continuum[box_ct];
+                    local_rad.lya_flux_injected = radiation_fields->lya_flux_injected[box_ct];
                 }
-                rad.prev_Ts = previous_spin_temp->spin_temperature[box_ct];
-                rad.prev_Tk = previous_spin_temp->kinetic_temp_neutral[box_ct];
-                rad.prev_xe = previous_spin_temp->xray_ionised_fraction[box_ct];
+                local_rad.prev_Ts = previous_spin_temp->spin_temperature[box_ct];
+                local_rad.prev_Tk = previous_spin_temp->kinetic_temp_neutral[box_ct];
+                local_rad.prev_xe = previous_spin_temp->xray_ionised_fraction[box_ct];
 
-                ts_cell = get_Ts_fast(redshift, dzp, &zp_consts, &rad);
+                // compute the spin temperature and other thermal fields for this cell
+                ts_cell = get_Ts_fast(redshift, dzp, &zp_consts, &local_rad);
                 this_spin_temp->spin_temperature[box_ct] = ts_cell.Ts;
                 this_spin_temp->kinetic_temp_neutral[box_ct] = ts_cell.Tk;
                 this_spin_temp->xray_ionised_fraction[box_ct] = ts_cell.x_e;
@@ -435,29 +436,31 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                 // Single cell debug
                 if (box_ct == 0) {
                     LOG_SUPER_DEBUG(
-                        "Cell0: delta: %.3e | xheat: %.3e | dxion: %.3e | dxlya: %.3e | dstarlya: "
+                        "Cell0: delta: %.3e | xray_heating_rate: %.3e | xray_ionization_rate: %.3e "
+                        "| xray_lya_flux: %.3e | lya_flux_continuum_injected: "
                         "%.3e",
-                        curr_delta, rad.dxheat_dt, rad.dxion_dt, rad.dxlya_dt, rad.dstarlya_dt);
+                        curr_delta, local_rad.xray_heating_rate, local_rad.xray_ionization_rate,
+                        local_rad.xray_lya_flux, local_rad.lya_flux_continuum_injected);
                     if (astro_options_global->USE_LYA_HEATING) {
-                        LOG_SUPER_DEBUG("Lya inj %.3e | Lya cont %.3e", rad.dstarlya_inj_dt,
-                                        rad.dstarlya_cont_dt);
+                        LOG_SUPER_DEBUG("lya_flux_injected %.3e | lya_flux_continuum %.3e",
+                                        local_rad.lya_flux_injected, local_rad.lya_flux_continuum);
                     }
                     if (astro_options_global->USE_MINI_HALOS) {
-                        LOG_SUPER_DEBUG("LyW %.3e", rad.dstarLW_dt);
+                        LOG_SUPER_DEBUG("lyw_flux %.3e", local_rad.lyw_flux);
                     }
                     LOG_SUPER_DEBUG("Ts %.5e Tk %.5e x_e %.5e J_21_LW %.5e", ts_cell.Ts, ts_cell.Tk,
                                     ts_cell.x_e, ts_cell.J_21_LW);
                 }
 
 #if LOG_LEVEL >= DEBUG_LEVEL
-                J_alpha_ave += rad.dxlya_dt + rad.dstarlya_dt;
-                xheat_ave += rad.dxheat_dt;
-                xion_ave += rad.dxion_dt;
+                J_alpha_ave += local_rad.xray_lya_flux + local_rad.lya_flux_continuum_injected;
+                xheat_ave += local_rad.xray_heating_rate;
+                xion_ave += local_rad.xray_ionization_rate;
                 Ts_ave += ts_cell.Ts;
                 Tk_ave += ts_cell.Tk;
                 J_LW_ave += ts_cell.J_21_LW;
-                eps_lya_inj_ave += rad.dstarlya_inj_dt;
-                eps_lya_cont_ave += rad.dstarlya_cont_dt;
+                lya_flux_injected_ave += local_rad.lya_flux_injected;
+                lya_flux_continuum_ave += local_rad.lya_flux_continuum;
                 x_e_ave += ts_cell.x_e;
 #endif
             }
@@ -479,9 +482,10 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
             LOG_DEBUG("J_LW %.2e", J_LW_ave / 1e21);
         }
         if (astro_options_global->USE_LYA_HEATING) {
-            eps_lya_cont_ave /= (double)HII_TOT_NUM_PIXELS;
-            eps_lya_inj_ave /= (double)HII_TOT_NUM_PIXELS;
-            LOG_DEBUG("eps_cont %.2e eps_inj %.2e", eps_lya_cont_ave, eps_lya_inj_ave);
+            lya_flux_continuum_ave /= (double)HII_TOT_NUM_PIXELS;
+            lya_flux_injected_ave /= (double)HII_TOT_NUM_PIXELS;
+            LOG_DEBUG("lya_flux_continuum %.2e lya_flux_injected %.2e", lya_flux_continuum_ave,
+                      lya_flux_injected_ave);
         }
 #endif
 
@@ -490,17 +494,22 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                 if (astro_options_global->USE_X_RAY_HEATING) {
                     LOG_ERROR(
                         "Estimated spin temperature is either infinite of NaN!"
-                        "idx %llu delta %.3e dxheat %.3e dxion %.3e dxlya %.3e dstarlya %.3e",
+                        "idx %llu delta %.3e xray_heating_rate %.3e xray_ionization_rate %.3e "
+                        "xray_lya_flux %.3e lya_flux_continuum_injected %.3e",
                         box_ct, perturbed_field->density[box_ct],
-                        radiation_fields->dxheat_dt[box_ct], radiation_fields->dxion_dt[box_ct],
-                        radiation_fields->dxlya_dt[box_ct], radiation_fields->dstarlya_dt[box_ct]);
+                        radiation_fields->xray_heating_rate[box_ct],
+                        radiation_fields->xray_ionization_rate[box_ct],
+                        radiation_fields->xray_lya_flux[box_ct],
+                        radiation_fields->lya_flux_continuum_injected[box_ct]);
                 } else {
                     LOG_ERROR(
                         "Estimated spin temperature is either infinite of NaN!"
-                        "idx %llu delta %.3e dxion %.3e dxlya %.3e dstarlya %.3e",
+                        "idx %llu delta %.3e xray_ionization_rate %.3e xray_lya_flux %.3e "
+                        "lya_flux_continuum_injected %.3e",
                         box_ct, perturbed_field->density[box_ct],
-                        radiation_fields->dxion_dt[box_ct], radiation_fields->dxlya_dt[box_ct],
-                        radiation_fields->dstarlya_dt[box_ct]);
+                        radiation_fields->xray_ionization_rate[box_ct],
+                        radiation_fields->xray_lya_flux[box_ct],
+                        radiation_fields->lya_flux_continuum_injected[box_ct]);
                 }
                 Throw(InfinityorNaNError);
             }
