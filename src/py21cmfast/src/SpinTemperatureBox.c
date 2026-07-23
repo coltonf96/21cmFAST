@@ -233,7 +233,7 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
     }
 
     // Update the cell quantities based on the above terms
-    double x_e, Tk;
+    double x_e, Tk, J_alpha_tot;
     x_e = rad->prev_xe + (dxe_dzp * dzp);  // remember dzp is negative
     // can do this late in evolution if dzp is too large
     if (x_e > 1)
@@ -263,7 +263,11 @@ struct Ts_cell get_Ts_fast(float zp, float dzp, struct spintemp_from_sfr_prefact
     output.Tk = Tk;
     output.J_21_LW = astro_options_global->USE_MINI_HALOS ? rad->lyw_flux : 0.;
 
-    double J_alpha_tot = rad->lya_flux_continuum_injected + rad->xray_lya_flux;
+    if (astro_options_global->USE_LYA_HEATING) {
+        J_alpha_tot = rad->lya_flux_continuum + rad->lya_flux_injected + rad->xray_lya_flux;
+    } else {
+        J_alpha_tot = rad->lya_flux_continuum_injected + rad->xray_lya_flux;
+    }
 
     // JD: I'm leaving these as comments in case I'm wrong, but there's NO WAY a compiler doesn't
     // know the fastest way to invert a number
@@ -410,8 +414,6 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                 }
                 local_rad.xray_ionization_rate = radiation_fields->xray_ionization_rate[box_ct];
                 local_rad.xray_lya_flux = radiation_fields->xray_lya_flux[box_ct];
-                local_rad.lya_flux_continuum_injected =
-                    radiation_fields->lya_flux_continuum_injected[box_ct];
                 local_rad.delta = curr_delta;
                 if (astro_options_global->USE_MINI_HALOS) {
                     local_rad.lyw_flux = radiation_fields->lyw_flux[box_ct];
@@ -419,6 +421,9 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                 if (astro_options_global->USE_LYA_HEATING) {
                     local_rad.lya_flux_continuum = radiation_fields->lya_flux_continuum[box_ct];
                     local_rad.lya_flux_injected = radiation_fields->lya_flux_injected[box_ct];
+                } else {
+                    local_rad.lya_flux_continuum_injected =
+                        radiation_fields->lya_flux_continuum_injected[box_ct];
                 }
                 local_rad.prev_Ts = previous_spin_temp->spin_temperature[box_ct];
                 local_rad.prev_Tk = previous_spin_temp->kinetic_temp_neutral[box_ct];
@@ -435,15 +440,25 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
 
                 // Single cell debug
                 if (box_ct == 0) {
-                    LOG_SUPER_DEBUG(
-                        "Cell0: delta: %.3e | xray_heating_rate: %.3e | xray_ionization_rate: %.3e "
-                        "| xray_lya_flux: %.3e | lya_flux_continuum_injected: "
-                        "%.3e",
-                        curr_delta, local_rad.xray_heating_rate, local_rad.xray_ionization_rate,
-                        local_rad.xray_lya_flux, local_rad.lya_flux_continuum_injected);
+                    if (astro_options_global->USE_X_RAY_HEATING) {
+                        LOG_SUPER_DEBUG(
+                            "Cell0: delta: %.3e | xray_heating_rate: %.3e | xray_ionization_rate: "
+                            "%.3e "
+                            "| xray_lya_flux: %.3e",
+                            curr_delta, local_rad.xray_heating_rate, local_rad.xray_ionization_rate,
+                            local_rad.xray_lya_flux);
+                    } else {
+                        LOG_SUPER_DEBUG(
+                            "Cell0: delta: %.3e | xray_ionization_rate: %.3e "
+                            "| xray_lya_flux: %.3e",
+                            curr_delta, local_rad.xray_ionization_rate, local_rad.xray_lya_flux);
+                    }
                     if (astro_options_global->USE_LYA_HEATING) {
                         LOG_SUPER_DEBUG("lya_flux_injected %.3e | lya_flux_continuum %.3e",
                                         local_rad.lya_flux_injected, local_rad.lya_flux_continuum);
+                    } else {
+                        LOG_SUPER_DEBUG("Cell0: lya_flux_continuum_injected: %.3e",
+                                        local_rad.lya_flux_continuum_injected);
                     }
                     if (astro_options_global->USE_MINI_HALOS) {
                         LOG_SUPER_DEBUG("lyw_flux %.3e", local_rad.lyw_flux);
@@ -453,15 +468,25 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
                 }
 
 #if LOG_LEVEL >= DEBUG_LEVEL
-                J_alpha_ave += local_rad.xray_lya_flux + local_rad.lya_flux_continuum_injected;
-                xheat_ave += local_rad.xray_heating_rate;
                 xion_ave += local_rad.xray_ionization_rate;
-                Ts_ave += ts_cell.Ts;
-                Tk_ave += ts_cell.Tk;
-                J_LW_ave += ts_cell.J_21_LW;
-                lya_flux_injected_ave += local_rad.lya_flux_injected;
-                lya_flux_continuum_ave += local_rad.lya_flux_continuum;
+                if (astro_options_global->USE_X_RAY_HEATING) {
+                    xheat_ave += local_rad.xray_heating_rate;
+                }
+                if (astro_options_global->USE_MINI_HALOS) {
+                    J_LW_ave += ts_cell.J_21_LW;
+                }
+                if (astro_options_global->USE_LYA_HEATING) {
+                    lya_flux_injected_ave += local_rad.lya_flux_injected;
+                    lya_flux_continuum_ave += local_rad.lya_flux_continuum;
+                    J_alpha_ave += local_rad.xray_lya_flux + local_rad.lya_flux_continuum +
+                                   local_rad.lya_flux_injected;
+                } else {
+                    J_alpha_ave += local_rad.xray_lya_flux + local_rad.lya_flux_continuum_injected;
+                }
                 x_e_ave += ts_cell.x_e;
+                Tk_ave += ts_cell.Tk;
+                Ts_ave += ts_cell.Ts;
+
 #endif
             }
         }
@@ -470,13 +495,16 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
         x_e_ave /= (double)HII_TOT_NUM_PIXELS;
         Ts_ave /= (double)HII_TOT_NUM_PIXELS;
         Tk_ave /= (double)HII_TOT_NUM_PIXELS;
-        J_alpha_ave /= (double)HII_TOT_NUM_PIXELS;
-        xheat_ave /= (double)HII_TOT_NUM_PIXELS;
-        xion_ave /= (double)HII_TOT_NUM_PIXELS;
-
         LOG_DEBUG("AVERAGES zp = %.2e Ts = %.2e x_e = %.2e Tk %.2e", redshift, Ts_ave, x_e_ave,
                   Tk_ave);
-        LOG_DEBUG("J_alpha = %.2e xheat = %.2e xion = %.2e", J_alpha_ave, xheat_ave, xion_ave);
+
+        xion_ave /= (double)HII_TOT_NUM_PIXELS;
+        J_alpha_ave /= (double)HII_TOT_NUM_PIXELS;
+        LOG_DEBUG("J_alpha = %.2e  xion = %.2e", J_alpha_ave, xion_ave);
+        if (astro_options_global->USE_X_RAY_HEATING) {
+            xheat_ave /= (double)HII_TOT_NUM_PIXELS;
+            LOG_DEBUG("xheat = %.2e", xheat_ave);
+        }
         if (astro_options_global->USE_MINI_HALOS) {
             J_LW_ave /= (double)HII_TOT_NUM_PIXELS;
             LOG_DEBUG("J_LW %.2e", J_LW_ave / 1e21);
@@ -491,25 +519,50 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
 
         for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
             if (isfinite(this_spin_temp->spin_temperature[box_ct]) == 0) {
-                if (astro_options_global->USE_X_RAY_HEATING) {
-                    LOG_ERROR(
-                        "Estimated spin temperature is either infinite of NaN!"
-                        "idx %llu delta %.3e xray_heating_rate %.3e xray_ionization_rate %.3e "
-                        "xray_lya_flux %.3e lya_flux_continuum_injected %.3e",
-                        box_ct, perturbed_field->density[box_ct],
-                        radiation_fields->xray_heating_rate[box_ct],
-                        radiation_fields->xray_ionization_rate[box_ct],
-                        radiation_fields->xray_lya_flux[box_ct],
-                        radiation_fields->lya_flux_continuum_injected[box_ct]);
+                if (astro_options_global->USE_LYA_HEATING) {
+                    if (astro_options_global->USE_X_RAY_HEATING) {
+                        LOG_ERROR(
+                            "Estimated spin temperature is either infinite of NaN!"
+                            "idx %llu delta %.3e xray_heating_rate %.3e xray_ionization_rate %.3e "
+                            "xray_lya_flux %.3e lya_flux_continuum %.3e lya_flux_injected %.3e",
+                            box_ct, perturbed_field->density[box_ct],
+                            radiation_fields->xray_heating_rate[box_ct],
+                            radiation_fields->xray_ionization_rate[box_ct],
+                            radiation_fields->xray_lya_flux[box_ct],
+                            radiation_fields->lya_flux_continuum[box_ct],
+                            radiation_fields->lya_flux_injected[box_ct]);
+                    } else {
+                        LOG_ERROR(
+                            "Estimated spin temperature is either infinite of NaN!"
+                            "idx %llu delta %.3e xray_ionization_rate %.3e xray_lya_flux %.3e "
+                            "lya_flux_continuum %.3e lya_flux_injected %.3e",
+                            box_ct, perturbed_field->density[box_ct],
+                            radiation_fields->xray_ionization_rate[box_ct],
+                            radiation_fields->xray_lya_flux[box_ct],
+                            radiation_fields->lya_flux_continuum[box_ct],
+                            radiation_fields->lya_flux_injected[box_ct]);
+                    }
                 } else {
-                    LOG_ERROR(
-                        "Estimated spin temperature is either infinite of NaN!"
-                        "idx %llu delta %.3e xray_ionization_rate %.3e xray_lya_flux %.3e "
-                        "lya_flux_continuum_injected %.3e",
-                        box_ct, perturbed_field->density[box_ct],
-                        radiation_fields->xray_ionization_rate[box_ct],
-                        radiation_fields->xray_lya_flux[box_ct],
-                        radiation_fields->lya_flux_continuum_injected[box_ct]);
+                    if (astro_options_global->USE_X_RAY_HEATING) {
+                        LOG_ERROR(
+                            "Estimated spin temperature is either infinite of NaN!"
+                            "idx %llu delta %.3e xray_heating_rate %.3e xray_ionization_rate %.3e "
+                            "xray_lya_flux %.3e lya_flux_continuum_injected %.3e",
+                            box_ct, perturbed_field->density[box_ct],
+                            radiation_fields->xray_heating_rate[box_ct],
+                            radiation_fields->xray_ionization_rate[box_ct],
+                            radiation_fields->xray_lya_flux[box_ct],
+                            radiation_fields->lya_flux_continuum_injected[box_ct]);
+                    } else {
+                        LOG_ERROR(
+                            "Estimated spin temperature is either infinite of NaN!"
+                            "idx %llu delta %.3e xray_ionization_rate %.3e xray_lya_flux %.3e "
+                            "lya_flux_continuum_injected %.3e",
+                            box_ct, perturbed_field->density[box_ct],
+                            radiation_fields->xray_ionization_rate[box_ct],
+                            radiation_fields->xray_lya_flux[box_ct],
+                            radiation_fields->lya_flux_continuum_injected[box_ct]);
+                    }
                 }
                 Throw(InfinityorNaNError);
             }

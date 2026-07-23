@@ -37,10 +37,10 @@ RadiationFieldsSetup *rad_setup = NULL;
 float **delNL0, **log10_Mcrit_LW;
 
 // arrays for R-dependent prefactors
-double *dstarlya_dt_prefactor, *dstarlya_dt_prefactor_MINI;
-double *dstarlyLW_dt_prefactor, *dstarlyLW_dt_prefactor_MINI;
-double *dstarlya_cont_dt_prefactor, *dstarlya_inj_dt_prefactor;
-double *dstarlya_cont_dt_prefactor_MINI, *dstarlya_inj_dt_prefactor_MINI;
+double *lya_flux_continuum_injected_prefactor, *lya_flux_continuum_injected_prefactor_MINI;
+double *lyw_flux_prefactor, *lyw_flux_prefactor_MINI;
+double *lya_flux_continuum_prefactor, *lya_flux_injected_prefactor;
+double *lya_flux_continuum_prefactor_MINI, *lya_flux_injected_prefactor_MINI;
 
 // boxes to hold stellar fraction integrals (Fcoll or SFRD)
 float *del_fcoll_Rct, *del_fcoll_Rct_MINI;
@@ -108,20 +108,25 @@ void alloc_global_arrays() {
     inverse_diff = (float *)calloc(x_int_NXHII, sizeof(float));
 
     // spectral stuff
-    dstarlya_dt_prefactor = calloc(astro_params_global->N_STEP_TS, sizeof(double));
     if (astro_options_global->USE_LYA_HEATING) {
-        dstarlya_cont_dt_prefactor = calloc(astro_params_global->N_STEP_TS, sizeof(double));
-        dstarlya_inj_dt_prefactor = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+        lya_flux_continuum_prefactor = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+        lya_flux_injected_prefactor = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+    } else {
+        lya_flux_continuum_injected_prefactor =
+            calloc(astro_params_global->N_STEP_TS, sizeof(double));
     }
 
     if (astro_options_global->USE_MINI_HALOS) {
-        dstarlya_dt_prefactor_MINI = calloc(astro_params_global->N_STEP_TS, sizeof(double));
-        dstarlyLW_dt_prefactor = calloc(astro_params_global->N_STEP_TS, sizeof(double));
-        dstarlyLW_dt_prefactor_MINI = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+        lyw_flux_prefactor = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+        lyw_flux_prefactor_MINI = calloc(astro_params_global->N_STEP_TS, sizeof(double));
         if (astro_options_global->USE_LYA_HEATING) {
-            dstarlya_cont_dt_prefactor_MINI =
+            lya_flux_continuum_prefactor_MINI =
                 calloc(astro_params_global->N_STEP_TS, sizeof(double));
-            dstarlya_inj_dt_prefactor_MINI = calloc(astro_params_global->N_STEP_TS, sizeof(double));
+            lya_flux_injected_prefactor_MINI =
+                calloc(astro_params_global->N_STEP_TS, sizeof(double));
+        } else {
+            lya_flux_continuum_injected_prefactor_MINI =
+                calloc(astro_params_global->N_STEP_TS, sizeof(double));
         }
     }
 
@@ -191,18 +196,20 @@ void free_ts_global_arrays() {
     free(M_max_R);
 
     // spectral
-    free(dstarlya_dt_prefactor);
     if (astro_options_global->USE_LYA_HEATING) {
-        free(dstarlya_cont_dt_prefactor);
-        free(dstarlya_inj_dt_prefactor);
+        free(lya_flux_continuum_prefactor);
+        free(lya_flux_injected_prefactor);
+    } else {
+        free(lya_flux_continuum_injected_prefactor);
     }
     if (astro_options_global->USE_MINI_HALOS) {
-        free(dstarlya_dt_prefactor_MINI);
-        free(dstarlyLW_dt_prefactor);
-        free(dstarlyLW_dt_prefactor_MINI);
+        free(lyw_flux_prefactor);
+        free(lyw_flux_prefactor_MINI);
         if (astro_options_global->USE_LYA_HEATING) {
-            free(dstarlya_inj_dt_prefactor_MINI);
-            free(dstarlya_cont_dt_prefactor_MINI);
+            free(lya_flux_injected_prefactor_MINI);
+            free(lya_flux_continuum_prefactor_MINI);
+        } else {
+            free(lya_flux_continuum_injected_prefactor_MINI);
         }
     }
 
@@ -393,30 +400,32 @@ void calculate_spectral_factors(double zp) {
             first_radii = false;
         }
         zpp_integrand = (pow(1 + zp, 2) * (1 + zpp));
-        dstarlya_dt_prefactor[R_ct] = zpp_integrand * sum_lyn_val;
-        LOG_ULTRA_DEBUG("z: %.2e R: %.2e int %.2e starlya: %.4e", zpp, R_values[R_ct],
-                        zpp_integrand, dstarlya_dt_prefactor[R_ct]);
 
         if (astro_options_global->USE_LYA_HEATING) {
-            dstarlya_cont_dt_prefactor[R_ct] = zpp_integrand * sum_ly2_val;
-            dstarlya_inj_dt_prefactor[R_ct] = zpp_integrand * sum_lynto2_val;
-            LOG_ULTRA_DEBUG("cont %.2e inj %.2e", dstarlya_cont_dt_prefactor[R_ct],
-                            dstarlya_inj_dt_prefactor[R_ct]);
+            lya_flux_continuum_prefactor[R_ct] = zpp_integrand * sum_ly2_val;
+            lya_flux_injected_prefactor[R_ct] = zpp_integrand * sum_lynto2_val;
+            LOG_ULTRA_DEBUG("cont %.2e inj %.2e", lya_flux_continuum_prefactor[R_ct],
+                            lya_flux_injected_prefactor[R_ct]);
+        } else {
+            lya_flux_continuum_injected_prefactor[R_ct] = zpp_integrand * sum_lyn_val;
+            LOG_ULTRA_DEBUG("z: %.2e R: %.2e int %.2e starlya: %.4e", zpp, R_values[R_ct],
+                            zpp_integrand, lya_flux_continuum_injected_prefactor[R_ct]);
         }
         if (astro_options_global->USE_MINI_HALOS) {
-            dstarlya_dt_prefactor_MINI[R_ct] = zpp_integrand * sum_lyn_val_MINI;
-            dstarlyLW_dt_prefactor[R_ct] = zpp_integrand * sum_lyLW_val;
-            dstarlyLW_dt_prefactor_MINI[R_ct] = zpp_integrand * sum_lyLW_val_MINI;
+            lyw_flux_prefactor[R_ct] = zpp_integrand * sum_lyLW_val;
+            lyw_flux_prefactor_MINI[R_ct] = zpp_integrand * sum_lyLW_val_MINI;
+            LOG_ULTRA_DEBUG("LW: %.2e LWmini: %.2e", lyw_flux_prefactor[R_ct],
+                            lyw_flux_prefactor_MINI[R_ct]);
             if (astro_options_global->USE_LYA_HEATING) {
-                dstarlya_cont_dt_prefactor_MINI[R_ct] = zpp_integrand * sum_ly2_val_MINI;
-                dstarlya_inj_dt_prefactor_MINI[R_ct] = zpp_integrand * sum_lynto2_val_MINI;
+                lya_flux_continuum_prefactor_MINI[R_ct] = zpp_integrand * sum_ly2_val_MINI;
+                lya_flux_injected_prefactor_MINI[R_ct] = zpp_integrand * sum_lynto2_val_MINI;
+                LOG_ULTRA_DEBUG("cont mini %.2e inj mini %.2e",
+                                lya_flux_continuum_prefactor_MINI[R_ct],
+                                lya_flux_injected_prefactor_MINI[R_ct]);
+            } else {
+                lya_flux_continuum_injected_prefactor_MINI[R_ct] = zpp_integrand * sum_lyn_val_MINI;
+                LOG_ULTRA_DEBUG("starmini: %.2e", lya_flux_continuum_injected_prefactor_MINI[R_ct]);
             }
-
-            LOG_ULTRA_DEBUG("starmini: %.2e LW: %.2e LWmini: %.2e",
-                            dstarlya_dt_prefactor_MINI[R_ct], dstarlyLW_dt_prefactor[R_ct],
-                            dstarlyLW_dt_prefactor_MINI[R_ct]);
-            LOG_ULTRA_DEBUG("cont mini %.2e inj mini %.2e", dstarlya_cont_dt_prefactor_MINI[R_ct],
-                            dstarlya_inj_dt_prefactor_MINI[R_ct]);
         }
 
         sum_lyn_prev = sum_lyn_val;
@@ -973,7 +982,8 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
                                 RadiationFields *radiation_fields, int R_ct) {
     index_huge box_ct;
     double z_edge_factor, dzpp_for_evolve, zpp, xray_R_factor;
-    double lyacont_factor_mini = 0., lyainj_factor_mini = 0., starlya_factor_mini = 0.;
+    double lya_flux_continuum_prefactor_mini = 0., lya_flux_injected_prefactor_mini = 0.,
+           lya_flux_continuum_injected_prefactor_mini = 0.;
     double ave_fcoll, ave_fcoll_MINI;
     double avg_fix_term = 1.;
     double avg_fix_term_MINI = 1.;
@@ -1073,10 +1083,12 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
 
     // minihalo factors should be separated since they may not be allocated
     if (astro_options_global->USE_MINI_HALOS) {
-        starlya_factor_mini = dstarlya_dt_prefactor_MINI[R_ct];
         if (astro_options_global->USE_LYA_HEATING) {
-            lyacont_factor_mini = dstarlya_cont_dt_prefactor_MINI[R_ct];
-            lyainj_factor_mini = dstarlya_inj_dt_prefactor_MINI[R_ct];
+            lya_flux_continuum_prefactor_mini = lya_flux_continuum_prefactor_MINI[R_ct];
+            lya_flux_injected_prefactor_mini = lya_flux_injected_prefactor_MINI[R_ct];
+        } else {
+            lya_flux_continuum_injected_prefactor_mini =
+                lya_flux_continuum_injected_prefactor_MINI[R_ct];
         }
     }
 
@@ -1155,19 +1167,22 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
             }
             radiation_fields->xray_ionization_rate[box_ct] += xray_sfr * freq_int_ion;
             radiation_fields->xray_lya_flux[box_ct] += xray_sfr * freq_int_lya;
-            radiation_fields->lya_flux_continuum_injected[box_ct] +=
-                sfr_term * dstarlya_dt_prefactor[R_ct] + sfr_term_mini * starlya_factor_mini;
             if (astro_options_global->USE_MINI_HALOS) {
                 radiation_fields->lyw_flux[box_ct] +=
-                    sfr_term_lw * dstarlyLW_dt_prefactor[R_ct] +
-                    sfr_term_mini_lw * dstarlyLW_dt_prefactor_MINI[R_ct];
+                    sfr_term_lw * lyw_flux_prefactor[R_ct] +
+                    sfr_term_mini_lw * lyw_flux_prefactor_MINI[R_ct];
             }
             if (astro_options_global->USE_LYA_HEATING) {
                 radiation_fields->lya_flux_continuum[box_ct] +=
-                    sfr_term * dstarlya_cont_dt_prefactor[R_ct] +
-                    sfr_term_mini * lyacont_factor_mini;
+                    sfr_term * lya_flux_continuum_prefactor[R_ct] +
+                    sfr_term_mini * lya_flux_continuum_prefactor_mini;
                 radiation_fields->lya_flux_injected[box_ct] +=
-                    sfr_term * dstarlya_inj_dt_prefactor[R_ct] + sfr_term_mini * lyainj_factor_mini;
+                    sfr_term * lya_flux_injected_prefactor[R_ct] +
+                    sfr_term_mini * lya_flux_injected_prefactor_mini;
+            } else {
+                radiation_fields->lya_flux_continuum_injected[box_ct] +=
+                    sfr_term * lya_flux_continuum_injected_prefactor[R_ct] +
+                    sfr_term_mini * lya_flux_continuum_injected_prefactor_mini;
             }
 
             // I cannot check the integral if we are using the halo field since delNL0
@@ -1210,23 +1225,25 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
 
                 if (astro_options_global->USE_X_RAY_HEATING) {
                     LOG_SUPER_DEBUG(
-                        "xh %.2e | xi %.2e | xl %.2e | sl %.2e",
+                        "xh %.2e | xi %.2e | xl %.2e",
                         radiation_fields->xray_heating_rate[box_ct] / astro_params_global->L_X,
                         radiation_fields->xray_ionization_rate[box_ct] / astro_params_global->L_X,
-                        radiation_fields->xray_lya_flux[box_ct] / astro_params_global->L_X,
-                        radiation_fields->lya_flux_continuum_injected[box_ct]);
+                        radiation_fields->xray_lya_flux[box_ct] / astro_params_global->L_X);
                 } else {
                     LOG_SUPER_DEBUG(
-                        "xi %.2e | xl %.2e | sl %.2e",
+                        "xi %.2e | xl %.2e",
                         radiation_fields->xray_ionization_rate[box_ct] / astro_params_global->L_X,
-                        radiation_fields->xray_lya_flux[box_ct] / astro_params_global->L_X,
-                        radiation_fields->lya_flux_continuum_injected[box_ct]);
+                        radiation_fields->xray_lya_flux[box_ct] / astro_params_global->L_X);
                 }
 
-                if (astro_options_global->USE_LYA_HEATING)
+                if (astro_options_global->USE_LYA_HEATING) {
                     LOG_SUPER_DEBUG("ct %.2e | ij %.2e",
                                     radiation_fields->lya_flux_continuum[box_ct],
                                     radiation_fields->lya_flux_injected[box_ct]);
+                } else {
+                    LOG_SUPER_DEBUG("sl %.2e",
+                                    radiation_fields->lya_flux_continuum_injected[box_ct]);
+                }
             }
 #endif
         }  // end of box_ct loop
@@ -1309,8 +1326,6 @@ void multiply_radiation_fields_by_constants(float redshift, RadiationFields *rad
             radiation_fields->xray_ionization_rate[box_ct] *= xray_prefactor * volunit_inv;
             radiation_fields->xray_lya_flux[box_ct] *=
                 xray_prefactor * volunit_inv * Nb_zp * (1 + curr_delta);
-            radiation_fields->lya_flux_continuum_injected[box_ct] *=
-                lya_star_prefactor * volunit_inv;
             if (astro_options_global->USE_MINI_HALOS) {
                 radiation_fields->lyw_flux[box_ct] *=
                     lya_star_prefactor * volunit_inv * physconst.h_p * 1e21;
@@ -1318,6 +1333,9 @@ void multiply_radiation_fields_by_constants(float redshift, RadiationFields *rad
             if (astro_options_global->USE_LYA_HEATING) {
                 radiation_fields->lya_flux_continuum[box_ct] *= lya_star_prefactor * volunit_inv;
                 radiation_fields->lya_flux_injected[box_ct] *= lya_star_prefactor * volunit_inv;
+            } else {
+                radiation_fields->lya_flux_continuum_injected[box_ct] *=
+                    lya_star_prefactor * volunit_inv;
             }
         }
     }

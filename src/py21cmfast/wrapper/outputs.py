@@ -1237,7 +1237,7 @@ class RadiationFields(OutputStructZ):
     xray_heating_rate = _arrayfield(optional=True)
     xray_ionization_rate = _arrayfield()
     xray_lya_flux = _arrayfield()
-    lya_flux_continuum_injected = _arrayfield()
+    lya_flux_continuum_injected = _arrayfield(optional=True)
     lyw_flux = _arrayfield(optional=True)
     lya_flux_continuum = _arrayfield(optional=True)
     lya_flux_injected = _arrayfield(optional=True)
@@ -1273,7 +1273,6 @@ class RadiationFields(OutputStructZ):
             "filtered_xray": Array(shape, dtype=np.float32),
             "xray_ionization_rate": Array(shape, dtype=np.float64),
             "xray_lya_flux": Array(shape, dtype=np.float64),
-            "lya_flux_continuum_injected": Array(shape, dtype=np.float64),
         }
         if inputs.astro_options.USE_MINI_HALOS:
             out["filtered_sfr_mini"] = Array(shape, dtype=np.float32)
@@ -1291,6 +1290,8 @@ class RadiationFields(OutputStructZ):
         if inputs.astro_options.USE_LYA_HEATING:
             out["lya_flux_continuum"] = Array(shape, dtype=np.float64)
             out["lya_flux_injected"] = Array(shape, dtype=np.float64)
+        else:
+            out["lya_flux_continuum_injected"] = Array(shape, dtype=np.float64)
 
         return cls(
             inputs=inputs,
@@ -1459,17 +1460,18 @@ class TsBox(OutputStructZ):
                 if self.astro_options.USE_MINI_HALOS:
                     required += ["filtered_sfr_mini"]
             else:
-                if self.astro_options.USE_X_RAY_HEATING:
-                    required += ["xray_heating_rate"]
                 required += [
                     "xray_ionization_rate",
                     "xray_lya_flux",
-                    "lya_flux_continuum_injected",
                 ]
+                if self.astro_options.USE_X_RAY_HEATING:
+                    required += ["xray_heating_rate"]
                 if self.astro_options.USE_MINI_HALOS:
                     required += ["lyw_flux"]
                 if self.astro_options.USE_LYA_HEATING:
                     required += ["lya_flux_continuum", "lya_flux_injected"]
+                else:
+                    required += ["lya_flux_continuum_injected"]
         else:
             raise ValueError(f"{type(input_box)} is not an input required for TsBox!")
 
