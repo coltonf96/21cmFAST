@@ -1521,7 +1521,9 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
         else if (mode == UPDATE_RADIATION_FIELDS_EVAL) {
             // If there are no stars, skip the calculation below
             if (!rad_setup->NO_LIGHT) {
-                filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING ? 5 : 4;
+                filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING
+                                  ? FILTER_SPHERICAL_SHELL_MULTIPLE_SCATTERING
+                                  : FILTER_SPHERICAL_SHELL_STRAIGHT_LINE;
 
                 // only print once, since this is called for every R
                 if (R_ct == 0) LOG_DEBUG("starting RadiationFields");
@@ -1531,7 +1533,8 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
                 one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr, R_inner,
                                    R_outer, R_star, filter_type, &sfr_avg, &fsfr_avg);
                 one_annular_filter(halobox->halo_xray, radiation_fields->filtered_xray, R_inner,
-                                   R_outer, R_star, 4, &xray_avg, &fxray_avg);
+                                   R_outer, R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &xray_avg,
+                                   &fxray_avg);
                 if (astro_options_global->USE_MINI_HALOS) {
                     one_annular_filter(halobox->halo_sfr_mini, radiation_fields->filtered_sfr_mini,
                                        R_inner, R_outer, R_star, filter_type, &sfr_avg_mini,
@@ -1540,11 +1543,13 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
                     // fields again for the the LW feedback, as these photons travel in straight
                     // lines
                     if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                        one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr_lw,
-                                           R_inner, R_outer, R_star, 4, &sfr_avg, &fsfr_avg);
+                        one_annular_filter(
+                            halobox->halo_sfr, radiation_fields->filtered_sfr_lw, R_inner, R_outer,
+                            R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &sfr_avg, &fsfr_avg);
                         one_annular_filter(halobox->halo_sfr_mini,
                                            radiation_fields->filtered_sfr_mini_lw, R_inner, R_outer,
-                                           R_star, 4, &sfr_avg_mini, &fsfr_avg_mini);
+                                           R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE,
+                                           &sfr_avg_mini, &fsfr_avg_mini);
                     }
                 }
 
