@@ -415,7 +415,7 @@ void initialise_Nion_Conditional_spline(double z, double min_density, double max
             if (astro_options_global->USE_MINI_HALOS) {
                 for (j = 0; j < NMTURN; j++) {
                     // NOTE: we use below homogeneous (feedback-free) ACG turnover mass, because if
-                    // the reionization reionization feedback dominates, then the the turnover
+                    // the reionization feedback dominates, then the the turnover
                     // masses for ACG and MCG are the same, in which case the MCG contribution is
                     // negligible (see comment in EvaluateNion_Conditional_MINI)
                     table_mcg_2d->z_arr[i][j] = log(Nion_ConditionalM_MINI(
@@ -543,7 +543,7 @@ void initialise_SFRD_Conditional_table(double z, double min_density, double max_
             if (astro_options_global->USE_MINI_HALOS) {
                 for (j = 0; j < NMTURN; j++) {
                     // NOTE: we use below homogeneous (feedback-free) ACG turnover mass, because if
-                    // the reionization reionization feedback dominates, then the the turnover
+                    // the reionization feedback dominates, then the the turnover
                     // masses for ACG and MCG are the same, in which case the MCG contribution is
                     // negligible (see comment in EvaluateSFRD_Conditional_MINI)
                     SFRD_conditional_table_MINI.z_arr[i][j] = log(Nion_ConditionalM_MINI(
@@ -677,7 +677,7 @@ void initialise_Xray_Conditional_table(double redshift, double min_density, doub
             } else {
                 for (j = 0; j < NMTURN; j++) {
                     // NOTE: we use below homogeneous (feedback-free) ACG turnover mass, because if
-                    // the reionization reionization feedback dominates, then the the turnover
+                    // the reionization feedback dominates, then the the turnover
                     // masses for ACG and MCG are the same, in which case the MCG contribution is
                     // negligible (see comment in EvaluateXray_Conditional)
                     Xray_conditional_table_MINI.z_arr[i][j] = log(Xray_ConditionalM(
@@ -1116,12 +1116,12 @@ double EvaluateSFRD_MINI(double redshift, double log10_Mturn_ACG_ave, double log
                              pow(10., log10_Mturn_MCG_ave), &sc_sfrd);
 }
 
-double EvaluateSFRD_Conditional(double delta, double log10Mturn_a, double growthf, double M_min,
+double EvaluateSFRD_Conditional(double delta, double log10Mturn_acg, double growthf, double M_min,
                                 double M_max, double M_cond, double sigma_max,
                                 ScalingConstants *sc) {
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
         if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL))
-            return exp(EvaluateRGTable2D_f(delta, log10Mturn_a, &SFRD_conditional_table2D));
+            return exp(EvaluateRGTable2D_f(delta, log10Mturn_acg, &SFRD_conditional_table2D));
         return exp(EvaluateRGTable1D_f(delta, &SFRD_conditional_table1D));
     }
 
@@ -1130,82 +1130,82 @@ double EvaluateSFRD_Conditional(double delta, double log10Mturn_a, double growth
     ScalingConstants sc_sfrd = evolve_scaling_constants_sfr(sc);
 
     return Nion_ConditionalM(growthf, log(M_min), log(M_max), log(M_cond), sigma_max, delta,
-                             pow(10, log10Mturn_a), &sc_sfrd,
+                             pow(10, log10Mturn_acg), &sc_sfrd,
                              astro_options_global->INTEGRATION_METHOD_ATOMIC);
 }
 
-double EvaluateSFRD_Conditional_MINI(double delta, double log10Mturn_a, double log10Mturn_m,
+double EvaluateSFRD_Conditional_MINI(double delta, double log10Mturn_acg, double log10Mturn_mcg,
                                      double growthf, double M_min, double M_max, double M_cond,
                                      double sigma_max, ScalingConstants *sc) {
     // No MCGs can form if their turnover mass is above the ACG turnover mass,
     // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
     // is the dominant effect)
-    if (log10Mturn_m >= log10Mturn_a) {
+    if (log10Mturn_mcg >= log10Mturn_acg) {
         return 0.;
     }
 
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
-        return exp(EvaluateRGTable2D_f(delta, log10Mturn_m, &SFRD_conditional_table_MINI));
+        return exp(EvaluateRGTable2D_f(delta, log10Mturn_mcg, &SFRD_conditional_table_MINI));
     }
 
     ScalingConstants sc_sfrd = evolve_scaling_constants_sfr(sc);
     return Nion_ConditionalM_MINI(growthf, log(M_min), log(M_max), log(M_cond), sigma_max, delta,
-                                  pow(10, log10Mturn_a), pow(10, log10Mturn_m), &sc_sfrd,
+                                  pow(10, log10Mturn_acg), pow(10, log10Mturn_mcg), &sc_sfrd,
                                   astro_options_global->INTEGRATION_METHOD_MINI);
 }
 
-double EvaluateNion_Conditional(double delta, double log10Mturn_a, double growthf, double M_min,
+double EvaluateNion_Conditional(double delta, double log10Mturn_acg, double growthf, double M_min,
                                 double M_max, double M_cond, double sigma_max, ScalingConstants *sc,
                                 bool prev) {
     RGTable2D_f *table = prev ? &Nion_conditional_table_prev : &Nion_conditional_table2D;
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
         if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL))
-            return exp(EvaluateRGTable2D_f(delta, log10Mturn_a, table));
+            return exp(EvaluateRGTable2D_f(delta, log10Mturn_acg, table));
         return exp(EvaluateRGTable1D_f(delta, &Nion_conditional_table1D));
     }
 
     return Nion_ConditionalM(growthf, log(M_min), log(M_max), log(M_cond), sigma_max, delta,
-                             pow(10, log10Mturn_a), sc,
+                             pow(10, log10Mturn_acg), sc,
                              astro_options_global->INTEGRATION_METHOD_ATOMIC);
 }
 
-double EvaluateNion_Conditional_MINI(double delta, double log10Mturn_a, double log10Mturn_m,
+double EvaluateNion_Conditional_MINI(double delta, double log10Mturn_acg, double log10Mturn_mcg,
                                      double growthf, double M_min, double M_max, double M_cond,
                                      double sigma_max, ScalingConstants *sc, bool prev) {
     // No MCGs can form if their turnover mass is above the ACG turnover mass,
     // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
     // is the dominant effect)
-    if (log10Mturn_m >= log10Mturn_a) {
+    if (log10Mturn_mcg >= log10Mturn_acg) {
         return 0.;
     }
 
     RGTable2D_f *table = prev ? &Nion_conditional_table_MINI_prev : &Nion_conditional_table_MINI;
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
-        return exp(EvaluateRGTable2D_f(delta, log10Mturn_m, table));
+        return exp(EvaluateRGTable2D_f(delta, log10Mturn_mcg, table));
     }
 
     return Nion_ConditionalM_MINI(growthf, log(M_min), log(M_max), log(M_cond), sigma_max, delta,
-                                  pow(10, log10Mturn_a), pow(10, log10Mturn_m), sc,
+                                  pow(10, log10Mturn_acg), pow(10, log10Mturn_mcg), sc,
                                   astro_options_global->INTEGRATION_METHOD_MINI);
 }
 
 // Note that unlike Nion and SFRD conditional functions, this function accounts for contributions
 // from both ACGs and MCGs
-double EvaluateXray_Conditional(double delta, double log10Mturn_a, double log10Mturn_m,
+double EvaluateXray_Conditional(double delta, double log10Mturn_acg, double log10Mturn_mcg,
                                 double redshift, double growthf, double M_min, double M_max,
                                 double M_cond, double sigma_max, ScalingConstants *sc) {
     // No MCGs can form if their turnover mass is above the ACG turnover mass,
     // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
     // is the dominant effect)
-    if (log10Mturn_m >= log10Mturn_a && astro_options_global->USE_MINI_HALOS) {
+    if (log10Mturn_mcg >= log10Mturn_acg && astro_options_global->USE_MINI_HALOS) {
         return 0.;
     }
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
         if (astro_options_global->USE_MINI_HALOS) {
-            return exp(EvaluateRGTable2D_f(delta, log10Mturn_m, &Xray_conditional_table_MINI));
+            return exp(EvaluateRGTable2D_f(delta, log10Mturn_mcg, &Xray_conditional_table_MINI));
         } else if (uses_reionization_feedback_in_acgs(
                        astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
-            return exp(EvaluateRGTable2D_f(delta, log10Mturn_a, &Xray_conditional_table_2D));
+            return exp(EvaluateRGTable2D_f(delta, log10Mturn_acg, &Xray_conditional_table_2D));
         } else {
             return exp(EvaluateRGTable1D_f(delta, &Xray_conditional_table_1D));
         }
@@ -1213,7 +1213,7 @@ double EvaluateXray_Conditional(double delta, double log10Mturn_a, double log10M
 
     // TODO: I shouldn't need to pass both redshift and growthf here
     return Xray_ConditionalM(redshift, growthf, log(M_min), log(M_max), log(M_cond), sigma_max,
-                             delta, pow(10, log10Mturn_a), pow(10, log10Mturn_m), sc,
+                             delta, pow(10, log10Mturn_acg), pow(10, log10Mturn_mcg), sc,
                              astro_options_global->INTEGRATION_METHOD_MINI);
 }
 

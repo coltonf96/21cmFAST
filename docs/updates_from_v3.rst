@@ -14,9 +14,9 @@ discrete source field which is then used in the spin temperature and ionization 
 calculations. This not only includes the effects of stochasticity in the IGM observables,
 but also creates several new outputs which can be further used in forecasting galaxy
 survey, line intensity mapping, and cosmic background statistics. The sampler is
-activated with setting ``SOURCE_MODEL`` on ``"CHMF-SAMPLER"`` and serves as a faster
+activated with setting ``SOURCE_MODEL`` to ``"CHMF-SAMPLER"`` and serves as a faster
 replacement to the previous excursion-set halo finder (which is still usable by
-``SOURCE_MODEL`` on ``"DEXM-ESF"``), with greatly increased functionality. Halos are
+``SOURCE_MODEL`` to ``"DEXM-ESF"``), with greatly increased functionality. Halos are
 sampled in a backward time-loop in each run before the main IGM calculations start.
 Halo catlogues can be found in the :class:`HaloCatalog` (Initial Lagrangian) and
 :class:`PerturbedHaloCatalog` (Final Eulerian) classes. Each catalogue contains the
@@ -29,15 +29,15 @@ feedback in the forward time-loop.
 A similar source model to the one descrobed above, albeit without discrete halos, is
 named ``"L-INTEGRAL"``. ``21cmFAST`` v4 also includes source models that mimic the
 behavior of the code in v3, which are ``"CONST-ION-EFF"`` and ``"E-INTEGRAL"``. The
-former corresponds to setting ``USE_MASS_DEPENDENT_ZETA`` on ``False`` in v3, while
-the latter corresponds to setting ``USE_MASS_DEPENDENT_ZETA`` on ``True`` in v3.
+former corresponds to setting ``USE_MASS_DEPENDENT_ZETA`` to ``False`` in v3, while
+the latter corresponds to setting ``USE_MASS_DEPENDENT_ZETA`` to ``True`` in v3.
 
 The conditional mass functions used to perform integrals have been extended with the
 Sheth-Tormen CHMF (Sheth+2002) which has been applied to ``21cmFAST`` in both halo and
 grid based source models, when the user sets ``HMF=='ST'``. All other mass functions
 rescale the Extended Press-Schechter (EPS) conditional mass function.
 
-It is also important to note that the logics for determining the turnover masses
+It is also important to note that the logic for determining the turnover masses
 between v3 and v4 have changed, see more details in :doc:`M_TURN`.
 
 Input Parameters
@@ -114,15 +114,10 @@ Changes in defaults
 Some of the default values for parameters have changed between v3 and v4. For example:
 
 * ``HII_DIM``: 200 in v3, 256 in v4
-
 * ``BOX_LEN``: 300 in v3, :math:`1.5 \times \text{HII\_DIM} = 384` in v4
-
 * ``USE_INTERPOLATION_TABLES``: False in v3, True (``"hmf-interpolation"``) in v4
-
 * ``HII_FILTER``: k-space top-hat in v3, spherical top-hat in v4
-
 * ``M_MIN_in_Mass``: False in v3, True in v4
-
 * ``DEXM_R_OVERLAP``: 1.0 in v3 (used to be called ``R_OVERLAP_FACTOR``), 2.0 in v4
 
 In addition, the default source model that is used in v4 is ``"CHMF-SAMPLER"``, while the default
@@ -131,11 +126,8 @@ settings in v3 corresponded to ``"E-INTEGRAL"``.
 The default value of some of the astrophysical parameters have also changed, for example:
 
 * ``F_STAR7_MINI``: -2.0 in v3, :math:`\text{F\_STAR10} - 3 \times \text{ALPHA\_STAR} = -2.5` in v4
-
 * ``L_X``: 40.0 in v3, 40.5 in v4
-
 * ``L_X_MINI``: 40.0 in v3, ``L_X`` = 40.5 in v4
-
 * ``R_BUBBLE_MAX``: 15.0 or 50.0 depending on ``INHOMO_RECO`` in v3, 15.0 in v4
 
 Furthermore, some new astrophysical parameters have been added in v4, most of them are related
@@ -152,8 +144,8 @@ Redshift space distortions
 ===========================
 In v3, the redshift space distortions were applied to the brightness temperature
 coeval box, by setting on True the flag ``SUBCELL_RSD``. In v4, redshift space distortions and
-velocity effects are applied to the brightness temperature lightcone box, by setting on True the keywrods
-arguments ``apply_rsds`` and ``include_dvdr_in_tau21`` in the function :func:`~py21cmfast.run_lightcone`.
+velocity effects are applied to the brightness temperature lightcone box, by setting the keywrod
+arguments ``apply_rsds`` and ``include_dvdr_in_tau21`` to ``True`` in the function :func:`~py21cmfast.run_lightcone`.
 Applying these effects to the coeval box is still possible in v4 as a post-processing step, by
 using methods of the class :class:`~py21cmfast.outputs.Coeval` with the same names (see
 :ref:`tutorials/redshift_space_distortions` for more details).

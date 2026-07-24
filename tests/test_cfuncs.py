@@ -740,7 +740,7 @@ def test_compute_mturns_model(
     # NOTE: to save time, the C code actually computes the inhomogeneous turnover masses at every cell,
     #       while the homogeneous ACG turnover mass is computed outside the box loop.
     #       The function below already includes the homogeneous ACG turnover mass in its calculation
-    Mturn_a_test, M_turn_m_test = cf.compute_mturns(
+    Mturn_acg_test, M_turn_mcg_test = cf.compute_mturns(
         inputs=inputs,
         redshifts=redshifts,
         J_LW_21=J_LW_21,
@@ -749,11 +749,11 @@ def test_compute_mturns_model(
         z_reion=z_reion,
     )
     # Compute the "standard" turnover masses for ACGs and MCGs
-    M_turn_a = cf.get_atomic_cooling_mass_threshold(
+    M_turn_acg = cf.get_atomic_cooling_mass_threshold(
         inputs=inputs,
         redshifts=redshifts,
     )
-    M_turn_m = cf.get_molecular_cooling_threshold_with_feedbacks(
+    M_turn_mcg = cf.get_molecular_cooling_threshold_with_feedbacks(
         inputs=inputs,
         redshifts=redshifts,
         J_LW_21=J_LW_21,
@@ -761,7 +761,7 @@ def test_compute_mturns_model(
     )
     # Compute the reionization feedback turnover mass, if applicable
     if reionization_feedback_model != "NONE":
-        M_turn_r = cf.get_reionization_feedback(
+        M_turn_r = cf.get_reionization_feedback_mass(
             inputs=inputs,
             redshifts=redshifts,
             ionisation_rate_G12=ionisation_rate_G12,
@@ -769,18 +769,18 @@ def test_compute_mturns_model(
         )
 
     # Determine the final turnover masses by taking the maximum of three mass scales
-    M_turn_a = np.maximum(M_turn_a, pow(10.0, log10_m_turn_stellar_feedback))
+    M_turn_acg = np.maximum(M_turn_acg, pow(10.0, log10_m_turn_stellar_feedback))
     if reionization_feedback_model in ["ACG", "BOTH"]:
-        M_turn_a = np.maximum(M_turn_a, M_turn_r)
+        M_turn_acg = np.maximum(M_turn_acg, M_turn_r)
     if use_mini_halos:
-        M_turn_m = np.maximum(M_turn_m, pow(10.0, log10_m_turn_stellar_feedback))
+        M_turn_mcg = np.maximum(M_turn_mcg, pow(10.0, log10_m_turn_stellar_feedback))
         if reionization_feedback_model in ["MCG", "BOTH"]:
-            M_turn_m = np.maximum(M_turn_m, M_turn_r)
+            M_turn_mcg = np.maximum(M_turn_mcg, M_turn_r)
 
     # Compare the results
-    np.testing.assert_allclose(Mturn_a_test, M_turn_a, rtol=1e-4)
+    np.testing.assert_allclose(Mturn_acg_test, M_turn_acg, rtol=1e-4)
     if use_mini_halos:
-        np.testing.assert_allclose(M_turn_m_test, M_turn_m, rtol=1e-4)
+        np.testing.assert_allclose(M_turn_mcg_test, M_turn_mcg, rtol=1e-4)
 
 
 @pytest.mark.parametrize("v_cb_model", ["NONE", "AVG-AUTO", "FLUCTS", "AVG-DEBUG"])
@@ -810,7 +810,7 @@ def test_roundtrip_mturns(default_input_struct_ts, v_cb_model):
             v_cb = inputs.astro_params.V_CB_AVG_DEBUG
 
     # Given the above fields, compute mturns using the cfuncs function
-    Mturn_a_global, M_turn_m_global = cf.compute_mturns(
+    Mturn_acg_global, M_turn_mcg_global = cf.compute_mturns(
         inputs=inputs,
         redshifts=global_evolution.node_redshifts,
         J_LW_21=J_21_LW_global,
@@ -821,11 +821,11 @@ def test_roundtrip_mturns(default_input_struct_ts, v_cb_model):
     # And compare!
     np.testing.assert_allclose(
         log10_mturn_acg_global,
-        np.log10(Mturn_a_global),
+        np.log10(Mturn_acg_global),
         rtol=1e-4,
     )
     np.testing.assert_allclose(
         log10_mturn_mcg_global,
-        np.log10(M_turn_m_global),
+        np.log10(M_turn_mcg_global),
         rtol=1e-4,
     )

@@ -111,7 +111,7 @@ def compute_global_reionization_at_z(
         case "AVG-DEBUG":
             v_cb = inputs.astro_params.V_CB_AVG_DEBUG
 
-    M_turn_a, M_turn_m = compute_mturns(
+    M_turn_acg, M_turn_mcg = compute_mturns(
         inputs=inputs,
         redshifts=redshift,
         J_LW_21=J_LW_21,
@@ -134,9 +134,9 @@ def compute_global_reionization_at_z(
             .initialize()
             .with_value(val=val * np.ones(shape)),
         )
-    box.log10_Mturnover_ave = np.log10(M_turn_a)
-    if M_turn_m is not None:
-        box.log10_Mturnover_MINI_ave = np.log10(M_turn_m)
+    box.log10_Mturnover_ave = np.log10(M_turn_acg)
+    if M_turn_mcg is not None:
+        box.log10_Mturnover_MINI_ave = np.log10(M_turn_mcg)
     return box
 
 
