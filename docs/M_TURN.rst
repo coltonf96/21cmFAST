@@ -389,7 +389,10 @@ Two subtle differences were made in the MCG duty fraction function compared to p
    by the Heaviside step function. This change was made in order to reflect the physical property that
    galaxies are formed via atomic cooling once their mass exceeds the atomic cooling threshold. It
    also means that when the reionization feedback becomes the dominant mechanism in determining the
-   two turnover masses, only ACGs survive, as the MCG duty fraction function becomes zero.
+   two turnover masses, only ACGs survive, as the MCG duty fraction function becomes zero. Note that
+   this modeling choice is only an approximation, as in reality, MCGs can still theoretically exist
+   in regions where :math:`M_{\rm turn}^{\rm (MCG)} > M_{\rm turn}^{\rm (ACG)}`, though they are expected
+   to be rare under this condition.
 
 2. The MCG **upper** turnover mass was defined to be the ACG **lower** turnover mass. This change
    was made to ensure that there is no mass gap between MCGs and ACGs where galaxies cannot form.
