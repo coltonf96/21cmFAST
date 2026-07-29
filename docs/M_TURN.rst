@@ -76,6 +76,9 @@ the atomic cooling threshold. The MCG duty fraction function was thus given by
 
     f_{\rm duty}^{\rm (MCG)}(M_h;M_{\rm turn}^{\rm (MCG)},M_{\rm atom}) = \exp\left(-M_{\rm turn}^{\rm (MCG)}/M_h\right)\exp\left(-M_h/M_{\rm atom}\right).
 
+The exponential decrease in the duty fraction of MCGs above :math:`M_{\rm atom}}` reflects the
+increasing probability of galaxies in these halos to be formed as ACGs rather than MCGs.
+
 ``21cmFAST`` v3.0.0 introduced several flags and parameters that allowed the user to switch
 between different models:
 
@@ -386,13 +389,9 @@ same as in v4.0.0 (or v3.0.0):
 Two subtle differences were made in the MCG duty fraction function compared to previous versions:
 
 1. MCGs can exist only if :math:`M_{\rm turn}^{\rm (MCG)} < M_{\rm turn}^{\rm (ACG)}`, which is enforced
-   by the Heaviside step function. This change was made in order to reflect the physical property that
-   galaxies are formed via atomic cooling once their mass exceeds the atomic cooling threshold. It
-   also means that when the reionization feedback becomes the dominant mechanism in determining the
-   two turnover masses, only ACGs survive, as the MCG duty fraction function becomes zero. Note that
-   this modeling choice is only an approximation, as in reality, MCGs can still theoretically exist
-   in regions where :math:`M_{\rm turn}^{\rm (MCG)} > M_{\rm turn}^{\rm (ACG)}`, though they are expected
-   to be rare under this condition.
+   by the Heaviside step function. This introduces a sharp cutoff in the MCG abundance (for a particular
+   voxel) at this transition point, but the amplitude of this effect is small. This choice was made to
+   avoid intensive computations for little reduction in fidelity.
 
 2. The MCG **upper** turnover mass was defined to be the ACG **lower** turnover mass. This change
    was made to ensure that there is no mass gap between MCGs and ACGs where galaxies cannot form.
