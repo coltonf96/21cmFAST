@@ -465,8 +465,16 @@ def test_bad_input_structs(default_input_struct_ts):
         RECOMB_MODEL="inhomogeneous",
     ).clone(node_redshifts=(35.0, 11.0, 10.0))
 
+    test_inputs_eulerian = test_inputs.evolve_input_structs(
+        SOURCE_MODEL="E-INTEGRAL",
+        V_CB_MODEL="FLUCTS",
+        POWER_SPECTRUM="CLASS",
+        K_MAX_FOR_CLASS=1.0,
+    )
+
     # We don't need to compute since we arent testing a successful run
     ic = InitialConditions.new(inputs=test_inputs)
+    ic_eulerian = InitialConditions.new(inputs=test_inputs_eulerian)
     hf = HaloCatalog.new(redshift=10.0, inputs=test_inputs, buffer_size=1)
     hb = HaloBox.new(redshift=10.0, inputs=test_inputs)
     pt = PerturbedField.new(redshift=10.0, inputs=test_inputs)
@@ -494,6 +502,32 @@ def test_bad_input_structs(default_input_struct_ts):
         )
 
     # HaloBox
+    with pytest.raises(
+        ValueError, match="You must provide initial_conditions for SOURCE_MODEL"
+    ):
+        p21c.compute_halo_grid(
+            redshift=10.0, initial_conditions=None, inputs=test_inputs, halo_catalog=hf
+        )
+
+    with pytest.raises(
+        ValueError, match="You must provide initial_conditions for SOURCE_MODEL"
+    ):
+        p21c.compute_halo_grid(
+            redshift=10.0,
+            initial_conditions=None,
+            inputs=test_inputs_eulerian,
+        )
+
+    with pytest.raises(
+        ValueError, match="You must provide perturbed_field for SOURCE_MODEL"
+    ):
+        p21c.compute_halo_grid(
+            redshift=10.0,
+            initial_conditions=ic_eulerian,
+            perturbed_field=None,
+            inputs=test_inputs_eulerian,
+        )
+
     with pytest.raises(
         ValueError, match="You must provide halo_catalog for SOURCE_MODEL"
     ):

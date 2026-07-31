@@ -802,6 +802,7 @@ def _redshift_loop_generator(
                     inputs=inputs,
                     halo_catalog=this_halofield,
                     redshift=z,
+                    perturbed_field=this_perturbed_field,
                     previous_ionize_box=getattr(prev_coeval, "ionized_box", None),
                     previous_spin_temp=getattr(prev_coeval, "ts_box", None),
                     write=write.halobox,
