@@ -749,17 +749,22 @@ int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
             // Now global SFRD at (R_ct) for the mean fixing
             for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
                 zpp = zpp_for_evolve_list[R_ct];
-                // TODO: At the moment, inhomogeneous reionization feedback cannot be accounted in
-                // SpinTemperatureBox.c,
-                //      see https://github.com/21cmfast/21cmFAST/issues/470. Thus, we use the
-                //      homogeneous (feedback-free) ACG turnover mass. It is important to remember
-                //      to fix this when issue #470 is fixed!
-                rad_setup->mean_sfr_zpp[R_ct] =
-                    EvaluateSFRD(zpp, log10(sc.mturn_acg_homogeneous), &sc);
-                if (astro_options_global->USE_MINI_HALOS) {
-                    rad_setup->mean_sfr_zpp_mini[R_ct] =
-                        EvaluateSFRD_MINI(zpp, log10(sc.mturn_acg_homogeneous),
-                                          rad_setup->ave_log10_MturnLW[R_ct], &sc);
+                if (source_model_is_mass_dependent(matter_options_global->SOURCE_MODEL)) {
+                    // TODO: At the moment, inhomogeneous reionization feedback cannot be accounted
+                    // in SpinTemperatureBox.c,
+                    //      see https://github.com/21cmfast/21cmFAST/issues/470. Thus, we use the
+                    //      homogeneous (feedback-free) ACG turnover mass. It is important to
+                    //      remember to fix this when issue #470 is fixed!
+                    rad_setup->mean_sfr_zpp[R_ct] =
+                        EvaluateSFRD(zpp, log10(sc.mturn_acg_homogeneous), &sc);
+                    if (astro_options_global->USE_MINI_HALOS) {
+                        rad_setup->mean_sfr_zpp_mini[R_ct] =
+                            EvaluateSFRD_MINI(zpp, log10(sc.mturn_acg_homogeneous),
+                                              rad_setup->ave_log10_MturnLW[R_ct], &sc);
+                    }
+                } else {
+                    rad_setup->mean_sfr_zpp[R_ct] =
+                        dfcoll_dz(zpp, sigma_min[R_ct], 0., sigma_max[R_ct]);
                 }
             }
         }
@@ -802,7 +807,7 @@ void calculate_sfrd_from_grid(int R_ct, float *dens_R_grid, float *Mcrit_R_grid,
         index_huge box_ct;
         double curr_dens;
         double curr_mcrit = 0.;
-        double fcoll, dfcoll;
+        double fcoll;
         double fcoll_MINI = 0;
 
 #pragma omp for reduction(+ : ave_sfrd_buf, ave_sfrd_buf_mini)
@@ -826,11 +831,11 @@ void calculate_sfrd_from_grid(int R_ct, float *dens_R_grid, float *Mcrit_R_grid,
                     sfrd_grid_mini[box_ct] = (1. + curr_dens) * fcoll_MINI;
                 }
             } else {
-                fcoll = EvaluateFcoll_delta(curr_dens, zpp_growth[R_ct], sigma_min[R_ct],
-                                            sigma_max[R_ct]);
-                dfcoll = EvaluatedFcolldz(curr_dens, zpp_for_evolve_list[R_ct], sigma_min[R_ct],
-                                          sigma_max[R_ct]);
-                sfrd_grid[box_ct] = (1. + curr_dens) * dfcoll;
+                // NOTE: The quantity below is actually not the collapsed fraction, but its
+                // derivative with respect to redshift
+                fcoll = EvaluatedFcolldz(curr_dens, zpp_for_evolve_list[R_ct], sigma_min[R_ct],
+                                         sigma_max[R_ct]);
+                sfrd_grid[box_ct] = (1. + curr_dens) * fcoll;
             }
             ave_sfrd_buf += fcoll;
             ave_sfrd_buf_mini += fcoll_MINI;
@@ -1029,18 +1034,23 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
                                 &rad_setup->max_log10_MturnLW[R_ct]);
             }
             // get the global things we missed before
-            // TODO: At the moment, inhomogeneous reionization feedback cannot be
-            // accounted in SpinTemperatureBox.c,
-            //      see https://github.com/21cmfast/21cmFAST/issues/470. Thus, we use
-            //      the homogeneous (feedback-free) ACG turnover mass. It is important
-            //      to remember to fix this when issue #470 is fixed!
-            rad_setup->mean_sfr_zpp[R_ct] =
-                EvaluateSFRD(zpp_for_evolve_list[R_ct], log10(rad_setup->sc.mturn_acg_homogeneous),
-                             &rad_setup->sc);
-            if (astro_options_global->USE_MINI_HALOS) {
-                rad_setup->mean_sfr_zpp_mini[R_ct] = EvaluateSFRD_MINI(
-                    zpp_for_evolve_list[R_ct], log10(rad_setup->sc.mturn_acg_homogeneous),
-                    rad_setup->ave_log10_MturnLW[R_ct], &rad_setup->sc);
+            if (source_model_is_mass_dependent(matter_options_global->SOURCE_MODEL)) {
+                // TODO: At the moment, inhomogeneous reionization feedback cannot be
+                // accounted in SpinTemperatureBox.c,
+                //      see https://github.com/21cmfast/21cmFAST/issues/470. Thus, we use
+                //      the homogeneous (feedback-free) ACG turnover mass. It is important
+                //      to remember to fix this when issue #470 is fixed!
+                rad_setup->mean_sfr_zpp[R_ct] =
+                    EvaluateSFRD(zpp_for_evolve_list[R_ct],
+                                 log10(rad_setup->sc.mturn_acg_homogeneous), &rad_setup->sc);
+                if (astro_options_global->USE_MINI_HALOS) {
+                    rad_setup->mean_sfr_zpp_mini[R_ct] = EvaluateSFRD_MINI(
+                        zpp_for_evolve_list[R_ct], log10(rad_setup->sc.mturn_acg_homogeneous),
+                        rad_setup->ave_log10_MturnLW[R_ct], &rad_setup->sc);
+                }
+            } else {
+                rad_setup->mean_sfr_zpp[R_ct] =
+                    dfcoll_dz(zpp, sigma_min[R_ct], 0., sigma_max[R_ct]);
             }
             // fill one row of the interp tables
             fill_freqint_tables(redshift, rad_setup->x_e_ave_p, rad_setup->Q_HI_zp,
