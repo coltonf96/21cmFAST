@@ -87,6 +87,7 @@ OPTIONS_TESTRUNS = {
         18,
         {
             "SOURCE_MODEL": "CONST-ION-EFF",
+            "HMF": "PS",
         },
     ],
     "mini": [
@@ -130,7 +131,7 @@ OPTIONS_TESTRUNS = {
     ],
     "ts_nomdz": [
         18,
-        {"USE_TS_FLUCT": True, "SOURCE_MODEL": "CONST-ION-EFF"},
+        {"USE_TS_FLUCT": True, "SOURCE_MODEL": "CONST-ION-EFF", "HMF": "PS"},
     ],
     "homo": [
         18,
