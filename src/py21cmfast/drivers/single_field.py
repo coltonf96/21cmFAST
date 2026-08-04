@@ -915,7 +915,10 @@ def compute_spin_temperature(
         previous_spin_temp = TsBox.dummy()
 
     if radiation_fields is None:
-        if inputs.matter_options.lagrangian_source_grid:
+        if (
+            inputs.matter_options.lagrangian_source_grid
+            or inputs.matter_options.USE_NEW_CODE
+        ):
             raise ValueError(
                 f"radiation_fields is required for SOURCE_MODEL= {inputs.matter_options.SOURCE_MODEL}"
             )

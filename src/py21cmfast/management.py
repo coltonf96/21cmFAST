@@ -17,7 +17,10 @@ def get_expected_outputs(
         "BrightnessTemp": ostrct.BrightnessTemp.new(inputs, redshift=6).arrays,
     }
 
-    if inputs.matter_options.lagrangian_source_grid:
+    if (
+        inputs.matter_options.lagrangian_source_grid
+        or inputs.matter_options.USE_NEW_CODE
+    ):
         out["HaloBox"] = ostrct.HaloBox.new(inputs, redshift=6).arrays
         if inputs.astro_options.USE_TS_FLUCT:
             out["RadiationFields"] = ostrct.RadiationFields.new(

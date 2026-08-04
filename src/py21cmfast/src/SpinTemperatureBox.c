@@ -355,7 +355,8 @@ int ComputeTsBox(float redshift, float prev_redshift, float perturbed_field_reds
         // RadiationFields.c.
         // TODO: Remove the following lines once https://github.com/21cmfast/21cmFAST/issues/668 is
         // fixed.
-        if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+        if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+            !matter_options_global->USE_NEW_CODE) {
             int R_ct;
             RadiationFieldsSetup *rad_setup = malloc(sizeof(RadiationFieldsSetup));
             setup_radiation_fields(redshift, perturbed_field_redshift, radiation_fields, rad_setup,

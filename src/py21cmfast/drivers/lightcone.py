@@ -94,7 +94,10 @@ class LightCone:
         ]
         if inputs.astro_options.USE_TS_FLUCT:
             possible_outputs.append(TsBox.new(inputs, redshift=0))
-        if inputs.matter_options.lagrangian_source_grid:
+        if (
+            inputs.matter_options.lagrangian_source_grid
+            or inputs.matter_options.USE_NEW_CODE
+        ):
             possible_outputs.append(HaloBox.new(inputs, redshift=0))
         field_names = ("log10_mturn_acg", "log10_mturn_mcg")
         for output in possible_outputs:

@@ -131,7 +131,8 @@ void alloc_global_arrays() {
     }
 
     // Nonhalo stuff
-    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+        !matter_options_global->USE_NEW_CODE) {
         int num_R_boxes =
             matter_options_global->MINIMIZE_MEMORY ? 1 : astro_params_global->N_STEP_TS;
 
@@ -218,7 +219,8 @@ void free_ts_global_arrays() {
     free(inverse_val_box);
 
     // interp tables
-    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+        !matter_options_global->USE_NEW_CODE) {
         int num_R_boxes =
             matter_options_global->MINIMIZE_MEMORY ? 1 : astro_params_global->N_STEP_TS;
 
@@ -592,7 +594,8 @@ void fill_freqint_tables(double zp, double x_e_ave, double filling_factor_of_HI_
     int R_start, R_end;
     // if we minimize mem these arrays are filled one by one
     if (matter_options_global->MINIMIZE_MEMORY &&
-        source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+        source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+        !matter_options_global->USE_NEW_CODE) {
         R_start = R_mm;
         R_end = R_mm + 1;
     } else {
@@ -744,8 +747,9 @@ int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
 
     // Initialise freq tables & prefactors (x_e by R tables)
     if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL) ||
-        !matter_options_global->MINIMIZE_MEMORY) {
-        if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+        matter_options_global->USE_NEW_CODE || !matter_options_global->MINIMIZE_MEMORY) {
+        if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+            !matter_options_global->USE_NEW_CODE) {
             // Now global SFRD at (R_ct) for the mean fixing
             for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
                 zpp = zpp_for_evolve_list[R_ct];
@@ -867,7 +871,8 @@ void setup_radiation_fields(float redshift, float perturbed_field_redshift,
     if (astro_options_global->USE_MINI_HALOS) {
         rad_setup->ave_log10_MturnLW = calloc(astro_params_global->N_STEP_TS, sizeof(double));
     }
-    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+        !matter_options_global->USE_NEW_CODE) {
         rad_setup->delta_unfiltered =
             (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
         rad_setup->ave_dens = calloc(astro_params_global->N_STEP_TS, sizeof(double));
@@ -890,7 +895,8 @@ void setup_radiation_fields(float redshift, float perturbed_field_redshift,
     // Since we use the average Mturn for the global tables this must be done first
     // NOTE: The filtered Mturn for the previous snapshot is used for Fcoll at ALL zpp
     //   regardless of distance from current reshift, this also goes for the averages
-    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+        !matter_options_global->USE_NEW_CODE) {
         double log10_Mcrit_limit;
         // now that we have the sigma table we can assign the sigma arrays
         for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
@@ -999,9 +1005,11 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
     dzpp_for_evolve = dzpp_list[R_ct];
     zpp = zpp_for_evolve_list[R_ct];
     // dtdz'' dz'' -> dR for the radius sum (c included in constants)
-    if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_CONST_ION_EFF)
+    if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_CONST_ION_EFF &&
+        !matter_options_global->USE_NEW_CODE)
         z_edge_factor = dzpp_for_evolve;  // uses dfcoll/dz
-    else if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_E_INTEGRAL)
+    else if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_E_INTEGRAL &&
+             !matter_options_global->USE_NEW_CODE)
         z_edge_factor =
             fabs(dzpp_for_evolve * dtdz_list[R_ct]) * hubble(zpp) / astro_params_global->t_STAR;
     else
@@ -1012,13 +1020,14 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
     // index for grids. For Eulerian grid source models (<2), we can use a single
     // filter radius at a time, if MINIMIZE_MEMORY=True
     if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
-        matter_options_global->MINIMIZE_MEMORY) {
+        !matter_options_global->USE_NEW_CODE && matter_options_global->MINIMIZE_MEMORY) {
         R_index = 0;
     } else {
         R_index = R_ct;
     }
 
-    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+        !matter_options_global->USE_NEW_CODE) {
         set_scaling_constants(zpp, &rad_setup->sc, false);
         if (matter_options_global->MINIMIZE_MEMORY) {
             // we call the filtering functions once here per R
@@ -1124,7 +1133,8 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
             // Secondly, it is *likely* faster to fill these boxes, and sum with a outer
             // R loop than an inner one.
 
-            if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
+            if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL) ||
+                matter_options_global->USE_NEW_CODE) {
                 sfr_term = radiation_fields->filtered_sfr[box_ct] * z_edge_factor;
                 // Minihalos and s->yr conversion are already included here
                 xray_sfr =
@@ -1143,7 +1153,8 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
                 xray_sfr = sfr_term * astro_params_global->L_X * xray_R_factor * physconst.s_per_yr;
             }
             if (astro_options_global->USE_MINI_HALOS) {
-                if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
+                if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL) ||
+                    matter_options_global->USE_NEW_CODE) {
                     sfr_term_mini = radiation_fields->filtered_sfr_mini[box_ct] * z_edge_factor;
                     if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
                         sfr_term_mini_lw =
@@ -1199,7 +1210,8 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
             // (filtered density) is not calculated
 #if LOG_LEVEL >= SUPER_DEBUG_LEVEL
             if (box_ct == 0 &&
-                source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+                source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+                !matter_options_global->USE_NEW_CODE) {
                 double integral_db;
                 if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_E_INTEGRAL) {
                     integral_db =
@@ -1313,7 +1325,8 @@ void multiply_radiation_fields_by_constants(float redshift, RadiationFields *rad
     growth_factor_zp = dicke(redshift);
 
     // converts the grid emissivity unit to per cm-3
-    if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
+    if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL) ||
+        matter_options_global->USE_NEW_CODE) {
         volunit_inv = pow(physconst.cm_per_Mpc, -3);
     } else {
         volunit_inv = cosmo_params_global->OMb * RHOcrit * pow(physconst.cm_per_Mpc, -3);
@@ -1355,7 +1368,8 @@ void free_rad_setup(RadiationFieldsSetup *rad_setup, short cleanup) {
     if (astro_options_global->USE_MINI_HALOS) {
         free(rad_setup->ave_log10_MturnLW);
     }
-    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+        !matter_options_global->USE_NEW_CODE) {
         fftwf_free(rad_setup->delta_unfiltered);
         free(rad_setup->ave_dens);
         free(rad_setup->mean_sfr_zpp);
@@ -1374,7 +1388,8 @@ void free_rad_setup(RadiationFieldsSetup *rad_setup, short cleanup) {
     //    but the log10Mturn average is needed
     free_global_tables();
 
-    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
+    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) &&
+        !matter_options_global->USE_NEW_CODE) {
         fftwf_forget_wisdom();
         fftwf_cleanup_threads();
         fftwf_cleanup();

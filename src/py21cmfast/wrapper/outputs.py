@@ -1470,7 +1470,10 @@ class TsBox(OutputStructZ):
             if self.astro_options.USE_MINI_HALOS:
                 required += ["J_21_LW"]
         elif isinstance(input_box, RadiationFields):
-            if self.matter_options.lagrangian_source_grid:
+            if (
+                self.matter_options.lagrangian_source_grid
+                or self.matter_options.USE_NEW_CODE
+            ):
                 required += ["filtered_sfr", "filtered_xray"]
                 if self.astro_options.USE_MINI_HALOS:
                     required += ["filtered_sfr_mini"]

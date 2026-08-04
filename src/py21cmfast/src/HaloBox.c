@@ -228,7 +228,7 @@ int get_uhmf_averages(double M_min, double M_max, double M_turn_a, double M_turn
     if (astro_options_global->USE_TS_FLUCT) {
         averages_out->halo_sfr = intgrl_sfrd * prefactor_sfr;
         if (astro_options_global->USE_MINI_HALOS) {
-            averages_out->sfr_mini = intgrl_sfrd * prefactor_sfr_mini;
+            averages_out->sfr_mini = intgrl_sfrd_mini * prefactor_sfr_mini;
         }
     }
 
@@ -540,7 +540,10 @@ int set_fixed_grids(double M_min, double M_max, InitialConditions *ini_boxes,
         double dens;
 #pragma omp for reduction(min : min_density) reduction(max : max_density)
         for (i = 0; i < num_pixels; i++) {
-            dens = dens_pointer[i] * growthf;
+            dens = dens_pointer[i];
+            if (source_model_uses_lagrangian_grids(matter_options_global->SOURCE_MODEL)) {
+                dens *= growthf;
+            }
             if (dens > max_density) max_density = dens;
             if (dens < min_density) min_density = dens;
         }
@@ -863,6 +866,7 @@ int ComputeHaloBox(double redshift, InitialConditions *ini_boxes, PerturbedField
             M_max_integral = RtoM(physconst.l_factor * simulation_options_global->BOX_LEN /
                                   simulation_options_global->DIM);
         } else {
+            // NOTE: M_max_integral is irrelevant for SOURCE_MODEL = CONST-ION-EFF
             M_max_integral = M_MAX_INTEGRAL;
         }
         if (M_min < M_max_integral) {

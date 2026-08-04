@@ -766,6 +766,7 @@ class MatterOptions(InputStruct):
           the 'DEXM-ESF' method for halos above the HII_DIM cell mass.
     """
 
+    USE_NEW_CODE: bool = field(default=False, converter=bool)
     HMF: Literal["PS", "ST", "WATSON", "WATSON-Z", "DELOS", "REED07", "YUNG24"] = (
         choice_field(default="ST")
     )
@@ -2102,7 +2103,7 @@ class InputParameters:
                 raise ValueError(
                     f"USE_EXP_FILTER is not compatible with SOURCE_MODEL == {self.matter_options.SOURCE_MODEL}"
                 )
-            if val.LYA_MULTIPLE_SCATTERING:
+            if val.LYA_MULTIPLE_SCATTERING and not self.matter_options.USE_NEW_CODE:
                 raise ValueError(
                     f"LYA_MULTIPLE_SCATTERING is not compatible with SOURCE_MODEL == {self.matter_options.SOURCE_MODEL}"
                 )
@@ -2546,6 +2547,12 @@ def check_halomass_range(inputs: InputParameters) -> None:
     if it is above the turnover mass.
     """
     # There are no problems if we are not using halos
+    # TODO: the last warning below (that we also test), is only reachable if max_integral_mass is larger than
+    # the upper mass_limits, but if we have halos then the latter is max_dexm which is exactly the same as max_integral_mass.
+    # Thus the conclusion is that this warning is reachable only when we use L-INTEGRAL. Therefore, I am keeping the quick return
+    # if we don't use lagrangian_source_grid (instead of a quick return if we don't use has_discrete_halos), but I suggest to
+    # modify the code below to include also Eulerian source models, (and the comment above that says that "there are no problems
+    # if we are not using halos")
     if not inputs.matter_options.lagrangian_source_grid:
         return
 
