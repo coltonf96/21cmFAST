@@ -64,7 +64,7 @@ def get_uniform_coeval(redshift, fill=1.0, BOX_LEN=100, HII_DIM=50):
 def test_equality(
     rect_lcner: lcn.RectilinearLightconer,
 ):
-    assert rect_lcner == rect_lcner
+    assert rect_lcner == rect_lcner  # noqa: PLR0124  # reflexivity of __eq__
 
 
 @pytest.mark.parametrize("lc", ["rect_lcner", "ang_lcner"])
