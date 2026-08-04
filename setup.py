@@ -49,7 +49,7 @@ setup(
     license="MIT license",
     description="A semi-numerical cosmological simulation code for the 21cm signal",
     long_description="{}\n{}".format(
-        re.compile("^.. start-badges.*^.. end-badges", re.M | re.S).sub(
+        re.compile("^.. start-badges.*^.. end-badges", re.MULTILINE | re.DOTALL).sub(
             "", _read("README.rst")
         ),
         re.sub(":[a-z]+:`~?(.*?)`", r"``\1``", _read("CHANGELOG.rst")),
