@@ -767,10 +767,16 @@ int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
                                               rad_setup->ave_log10_MturnLW[R_ct], &sc);
                     }
                 } else {
-                    rad_setup->mean_sfr_zpp[R_ct] =
-                        EvaluateSFRD(zpp, log10(sc.mturn_acg_homogeneous), &sc);
-                    // rad_setup->mean_sfr_zpp[R_ct] = dfcoll_dz(zpp, sigma_min[R_ct], 0.,
-                    // sigma_max[R_ct]);
+                    // For the mass-independent source model, the SFRD is proportional to the
+                    // derivative of the collapsed fraction with respect to redshift. We compute
+                    // this derivative very similarly to dfcoll_dz in hmf.c.
+                    double dz, fc1, fc2, lnMmin, lnMmax;
+                    dz = 0.001;
+                    lnMmin = log(M_min_R[R_ct]);
+                    lnMmax = log(M_MAX_INTEGRAL);
+                    fc1 = Fcoll_General(zpp + dz, lnMmin, lnMmax);
+                    fc2 = Fcoll_General(zpp - dz, lnMmin, lnMmax);
+                    rad_setup->mean_sfr_zpp[R_ct] = (fc1 - fc2) / (2.0 * dz);
                 }
             }
         }
@@ -813,7 +819,7 @@ void calculate_sfrd_from_grid(int R_ct, float *dens_R_grid, float *Mcrit_R_grid,
         index_huge box_ct;
         double curr_dens;
         double curr_mcrit = 0.;
-        double fcoll, dfcoll;
+        double fcoll;
         double fcoll_MINI = 0;
 
 #pragma omp for reduction(+ : ave_sfrd_buf, ave_sfrd_buf_mini)
@@ -837,11 +843,11 @@ void calculate_sfrd_from_grid(int R_ct, float *dens_R_grid, float *Mcrit_R_grid,
                     sfrd_grid_mini[box_ct] = (1. + curr_dens) * fcoll_MINI;
                 }
             } else {
-                fcoll = EvaluateFcoll_delta(curr_dens, zpp_growth[R_ct], sigma_min[R_ct],
-                                            sigma_max[R_ct]);
-                dfcoll = EvaluatedFcolldz(curr_dens, zpp_for_evolve_list[R_ct], sigma_min[R_ct],
-                                          sigma_max[R_ct]);
-                sfrd_grid[box_ct] = (1. + curr_dens) * dfcoll;
+                // NOTE: The quantity below is actually not the collapsed fraction, but its
+                // derivative with respect to redshift
+                fcoll = EvaluatedFcolldz(curr_dens, zpp_for_evolve_list[R_ct], sigma_min[R_ct],
+                                         sigma_max[R_ct]);
+                sfrd_grid[box_ct] = (1. + curr_dens) * fcoll;
             }
             ave_sfrd_buf += fcoll;
             ave_sfrd_buf_mini += fcoll_MINI;
@@ -1060,11 +1066,16 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
                         rad_setup->ave_log10_MturnLW[R_ct], &rad_setup->sc);
                 }
             } else {
-                rad_setup->mean_sfr_zpp[R_ct] =
-                    EvaluateSFRD(zpp_for_evolve_list[R_ct],
-                                 log10(rad_setup->sc.mturn_acg_homogeneous), &rad_setup->sc);
-                // rad_setup->mean_sfr_zpp[R_ct] = dfcoll_dz(zpp, sigma_min[R_ct], 0.,
-                // sigma_max[R_ct]);
+                // For the mass-independent source model, the SFRD is proportional to the derivative
+                // of the collapsed fraction with respect to redshift. We compute this derivative
+                // very similarly to dfcoll_dz in hmf.c.
+                double dz, fc1, fc2, lnMmin, lnMmax;
+                dz = 0.001;
+                lnMmin = log(M_min_R[R_ct]);
+                lnMmax = log(M_MAX_INTEGRAL);
+                fc1 = Fcoll_General(zpp + dz, lnMmin, lnMmax);
+                fc2 = Fcoll_General(zpp - dz, lnMmin, lnMmax);
+                rad_setup->mean_sfr_zpp[R_ct] = (fc1 - fc2) / (2.0 * dz);
             }
             // fill one row of the interp tables
             fill_freqint_tables(redshift, rad_setup->x_e_ave_p, rad_setup->Q_HI_zp,

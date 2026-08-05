@@ -104,8 +104,7 @@ void set_halo_properties(double halo_mass, double M_turn_a, double M_turn_m,
 // Expected global averages for box quantities for mean adjustment
 // WARNING: THESE AVERAGE BOXES ARE WRONG, CHECK THEM
 int get_uhmf_averages(double M_min, double M_max, double M_turn_a, double M_turn_m,
-                      ScalingConstants *consts, IntegralCondition *integral_cond,
-                      HaloProperties *averages_out) {
+                      ScalingConstants *consts, HaloProperties *averages_out) {
     LOG_SUPER_DEBUG("Getting Box averages z=%.2f M [%.2e %.2e] Mt [%.2e %.2e]", consts->redshift,
                     M_min, M_max, M_turn_a, M_turn_m);
     double t_h = consts->t_h;
@@ -220,7 +219,14 @@ int get_uhmf_averages(double M_min, double M_max, double M_turn_a, double M_turn
                                                      M_turn_m, &consts_sfrd);
             }
         } else {
-            intgrl_sfrd = dfcoll_dz(consts->redshift, integral_cond->sigma_min, 0., 0.);
+            // For the mass-independent source model, the SFRD is proportional to the derivative of
+            // the collapsed fraction with respect to redshift. We compute this derivative very
+            // similarly to dfcoll_dz in hmf.c.
+            double dz, fc1, fc2;
+            dz = 0.001;
+            fc1 = Fcoll_General(consts->redshift + dz, lnMmin, lnMmax);
+            fc2 = Fcoll_General(consts->redshift - dz, lnMmin, lnMmax);
+            intgrl_sfrd = (fc1 - fc2) / (2.0 * dz);
         }
     }
 
@@ -331,13 +337,12 @@ HaloProperties get_halobox_averages(HaloBox *grids, PerturbedField *perturbed_fi
 //   Generally should only be done for the fixed portion of the grids, since
 //   it will otherwise make the box inconsistent with the input catalogue
 void mean_fix_grids(double M_min, double M_max, HaloBox *grids, PerturbedField *perturbed_field,
-                    ScalingConstants *consts, IntegralCondition *integral_cond) {
+                    ScalingConstants *consts) {
     HaloProperties averages_global;
     // NOTE: requires the mean mcrits to be set on the grids
     double M_turn_a_global = pow(10, grids->log10_Mcrit_ACG_ave);
     double M_turn_m_global = pow(10, grids->log10_Mcrit_MCG_ave);
-    get_uhmf_averages(M_min, M_max, M_turn_a_global, M_turn_m_global, consts, integral_cond,
-                      &averages_global);
+    get_uhmf_averages(M_min, M_max, M_turn_a_global, M_turn_m_global, consts, &averages_global);
     HaloProperties averages_hbox;
     averages_hbox = get_halobox_averages(grids, perturbed_field);
 
@@ -614,8 +619,7 @@ int set_fixed_grids(double M_min, double M_max, InitialConditions *ini_boxes,
     }
     free_conditional_tables();
 
-    if (ev_consts->fix_mean)
-        mean_fix_grids(M_min, M_max, grids, perturbed_field, ev_consts, &integral_cond);
+    if (ev_consts->fix_mean) mean_fix_grids(M_min, M_max, grids, perturbed_field, ev_consts);
 
     return 0;
 }
@@ -625,23 +629,11 @@ void halobox_debug_print_avg(HaloBox *halobox, PerturbedField *perturbed_field,
     if (LOG_LEVEL < DEBUG_LEVEL) return;
     HaloProperties averages_box;
     averages_box = get_halobox_averages(halobox, perturbed_field);
-    double M_cell;
-    size_huge num_pixels;
-    if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL) ||
-        !matter_options_global->PERTURB_ON_HIGH_RES) {
-        num_pixels = HII_TOT_NUM_PIXELS;
-    } else {
-        num_pixels = TOT_NUM_PIXELS;
-    }
-    M_cell = RHOcrit * cosmo_params_global->OMm * VOLUME / num_pixels;
     HaloProperties averages_global;
-    IntegralCondition integral_cond;
-    set_integral_constants(&integral_cond, consts->redshift, M_min, M_max, M_cell);
     LOG_DEBUG("HALO BOXES REDSHIFT %.2f [%.2e %.2e]", consts->redshift, M_min, M_max);
     double mturn_a_avg = pow(10, halobox->log10_Mcrit_ACG_ave);
     double mturn_m_avg = pow(10, halobox->log10_Mcrit_MCG_ave);
-    get_uhmf_averages(M_min, M_max, mturn_a_avg, mturn_m_avg, consts, &integral_cond,
-                      &averages_global);
+    get_uhmf_averages(M_min, M_max, mturn_a_avg, mturn_m_avg, consts, &averages_global);
 
     LOG_DEBUG("N_ion average: Expected: %11.3e, from box: %11.3e", averages_global.n_ion,
               averages_box.n_ion);
