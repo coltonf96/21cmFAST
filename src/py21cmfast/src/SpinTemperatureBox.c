@@ -1,15 +1,12 @@
 // Re-write of find_HII_bubbles.c for being accessible within the MCMC
 #include "SpinTemperatureBox.h"
 
-#include <complex.h>
-#include <fftw3.h>
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "Constants.h"
-#include "RadiationFields.h"
 #include "cosmology.h"
 #include "exceptions.h"
 #include "heating_helper_progs.h"

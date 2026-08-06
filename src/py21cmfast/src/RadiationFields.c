@@ -26,24 +26,16 @@ This includes X-ray heating rate, photoionization rate, and Lyman-alpha flux.
 #include "indexing.h"
 #include "interp_tables.h"
 #include "logger.h"
-#include "thermochem.h"
 
 // global pointer to the radiation fields setup struct. This is useful since we visit this module
 // several times per snapshot
 RadiationFieldsSetup *rad_setup = NULL;
-
-// Global arrays which have yet to be moved to structs
-// R x box arrays
-float **delNL0, **log10_Mcrit_LW;
 
 // arrays for R-dependent prefactors
 double *lya_flux_continuum_injected_prefactor, *lya_flux_continuum_injected_prefactor_MINI;
 double *lyw_flux_prefactor, *lyw_flux_prefactor_MINI;
 double *lya_flux_continuum_prefactor, *lya_flux_injected_prefactor;
 double *lya_flux_continuum_prefactor_MINI, *lya_flux_injected_prefactor_MINI;
-
-// boxes to hold stellar fraction integrals (Fcoll or SFRD)
-float *del_fcoll_Rct, *del_fcoll_Rct_MINI;
 
 // x_e interpolation boxes / arrays (not a RGI)
 float *inverse_val_box;
@@ -55,9 +47,7 @@ double **freq_int_heat_tbl, **freq_int_ion_tbl, **freq_int_lya_tbl, **freq_int_h
 double **freq_int_ion_tbl_diff, **freq_int_lya_tbl_diff;
 
 // R-dependent arrays which are set once
-double *R_values, *dzpp_list, *dtdz_list, *zpp_growth, *zpp_for_evolve_list, *zpp_edge;
-double *sigma_min, *sigma_max, *M_max_R, *M_min_R;
-double *min_densities, *max_densities;
+double *R_values, *dzpp_list, *dtdz_list, *zpp_for_evolve_list, *zpp_edge;
 
 // Arrays which specify the Radii, distances, redshifts of each shell
 //   They will have a global instance since they are reused a lot
@@ -68,7 +58,6 @@ double *min_densities, *max_densities;
 //      double *zpp_cen; //middle redshift of cell (z_inner + z_outer)/2
 //      double *dzpp_list; //redshift difference between inner and outer edge
 //      double *dtdz_list; //dtdz at zpp_cen
-//      double *zpp_growth; //linear growth factor D(z) at zpp_cen
 //  }
 //  struct radii_spec r_s;
 
@@ -78,16 +67,10 @@ void alloc_global_arrays() {
     int i;
     // z-edges
     zpp_for_evolve_list = calloc(astro_params_global->N_STEP_TS, sizeof(double));
-    zpp_growth = calloc(astro_params_global->N_STEP_TS, sizeof(double));
     zpp_edge = calloc(astro_params_global->N_STEP_TS, sizeof(double));
     dzpp_list = calloc(astro_params_global->N_STEP_TS, sizeof(double));
     dtdz_list = calloc(astro_params_global->N_STEP_TS, sizeof(double));
     R_values = calloc(astro_params_global->N_STEP_TS, sizeof(double));
-
-    sigma_min = calloc(astro_params_global->N_STEP_TS, sizeof(double));
-    sigma_max = calloc(astro_params_global->N_STEP_TS, sizeof(double));
-    M_min_R = calloc(astro_params_global->N_STEP_TS, sizeof(double));
-    M_max_R = calloc(astro_params_global->N_STEP_TS, sizeof(double));
 
     // frequency integral tables
     freq_int_heat_tbl = (double **)calloc(x_int_NXHII, sizeof(double *));
@@ -158,17 +141,11 @@ void free_ts_global_arrays() {
     free(inverse_diff);
 
     // z- edges
-    free(zpp_growth);
     free(zpp_edge);
     free(zpp_for_evolve_list);
     free(dzpp_list);
     free(dtdz_list);
     free(R_values);
-
-    free(sigma_min);
-    free(sigma_max);
-    free(M_min_R);
-    free(M_max_R);
 
     // spectral
     if (astro_options_global->USE_LYA_HEATING) {
@@ -235,12 +212,8 @@ void setup_z_edges(double zp) {
         } else {
             dzpp_for_evolve = zpp_edge[R_ct - 1] - zpp_edge[R_ct];
         }
-        zpp_growth[R_ct] = dicke(zpp);      // growth factors
         dzpp_list[R_ct] = dzpp_for_evolve;  // z bin width
         dtdz_list[R_ct] = dtdz(zpp);        // dt/dz''
-
-        M_min_R[R_ct] = minimum_source_mass(zpp_for_evolve_list[R_ct], true);
-        M_max_R[R_ct] = RtoM(R_values[R_ct]);
 
         R *= R_factor;
     }
@@ -387,161 +360,14 @@ void calculate_spectral_factors(double zp) {
     }
 }
 
-// fill fftwf boxes, do the r2c transform and normalise
-void prepare_filter_boxes(double redshift, float *input_dens, float *input_vcb, float *input_j21,
-                          fftwf_complex *output_dens, fftwf_complex *output_LW,
-                          ScalingConstants *sc) {
-    int i, j, k;
-    index_huge ct, index_f;
-    double curr_vcb, curr_j21, M_buf;
-    int box_dim[3] = {simulation_options_global->HII_DIM, simulation_options_global->HII_DIM,
-                      HII_D_PARA};
-
-// NOTE: Meraxes just applies a pointer cast box = (fftwf_complex *) input. Figure out why this
-// works,
-//       They pad the input by a factor of 2 to cover the complex part, but from the type I thought
-//       it would be stored [(r,c),(r,c)...] Not [(r,r,r,r....),(c,c,c....)] so the alignment should
-//       be wrong, right?
-#pragma omp parallel for private(i, j, k, ct, index_f) \
-    num_threads(simulation_options_global->N_THREADS) collapse(3)
-    for (i = 0; i < box_dim[0]; i++) {
-        for (j = 0; j < box_dim[1]; j++) {
-            for (k = 0; k < box_dim[2]; k++) {
-                ct = grid_index_general(i, j, k, box_dim);
-                index_f = grid_index_fftw_r(i, j, k, box_dim);
-                *((float *)output_dens + index_f) = input_dens[ct];
-            }
-        }
-    }
-    // Transform unfiltered box to k-space to prepare for filtering
-    dft_r2c_cube(matter_options_global->USE_FFTW_WISDOM, simulation_options_global->HII_DIM,
-                 HII_D_PARA, simulation_options_global->N_THREADS, output_dens);
-#pragma omp parallel for num_threads(simulation_options_global->N_THREADS)
-    for (ct = 0; ct < HII_KSPACE_NUM_PIXELS; ct++) {
-        output_dens[ct] /= (float)HII_TOT_NUM_PIXELS;
-    }
-
-    if (astro_options_global->USE_MINI_HALOS) {
-        curr_vcb = sc->vcb_const;
-#pragma omp parallel for firstprivate(curr_vcb) private(i, j, k, curr_j21, M_buf, ct, index_f) \
-    num_threads(simulation_options_global->N_THREADS) collapse(3)
-        for (i = 0; i < box_dim[0]; i++) {
-            for (j = 0; j < box_dim[1]; j++) {
-                for (k = 0; k < box_dim[2]; k++) {
-                    ct = grid_index_general(i, j, k, box_dim);
-                    index_f = grid_index_fftw_r(i, j, k, box_dim);
-                    if (matter_options_global->V_CB_MODEL == V_CB_MODEL_FLUCTS) {
-                        curr_vcb = input_vcb[ct];
-                    }
-                    curr_j21 = input_j21[ct];
-                    // NOTE: we don't use reionization_feedback here, I assume it wouldn't do much
-                    // but it's inconsistent
-                    M_buf =
-                        molecular_cooling_threshold_with_feedbacks(redshift, curr_j21, curr_vcb);
-                    M_buf = fmax(M_buf, astro_params_global->M_TURN_STELLAR_FEEDBACK);
-                    *((float *)output_LW + index_f) = log10(M_buf);
-                }
-            }
-        }
-        // Transform unfiltered box to k-space to prepare for filtering
-        dft_r2c_cube(matter_options_global->USE_FFTW_WISDOM, simulation_options_global->HII_DIM,
-                     HII_D_PARA, simulation_options_global->N_THREADS, output_LW);
-#pragma omp parallel for num_threads(simulation_options_global->N_THREADS)
-        for (ct = 0; ct < HII_KSPACE_NUM_PIXELS; ct++) {
-            output_LW[ct] /= (float)HII_TOT_NUM_PIXELS;
-        }
-    }
-}
-
-// fill a box[R_ct][box_ct] array for use in TS by filtering on different scales and storing results
-void fill_Rbox_table(float **result, fftwf_complex *unfiltered_box, double *R_array, int n_R,
-                     double min_value, double const_factor, double *min_arr, double *average_arr,
-                     double *max_arr) {
-    // allocate table/grid memory
-    int i, j, k, R_ct;
-    double R;
-    double ave_buffer, min_out_R, max_out_R;
-    int box_dim[3] = {simulation_options_global->HII_DIM, simulation_options_global->HII_DIM,
-                      HII_D_PARA};
-
-    fftwf_complex *box =
-        (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
-    // Smooth the density field, at the same time store the minimum and maximum densities for their
-    // usage in the interpolation tables
-    LOG_ULTRA_DEBUG("db0");
-    for (R_ct = 0; R_ct < n_R; R_ct++) {
-        R = R_array[R_ct];
-        ave_buffer = 0;
-        min_out_R = 1e20;
-        max_out_R = -1e20;
-        // copy over unfiltered box
-        memcpy(box, unfiltered_box, sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
-        LOG_ULTRA_DEBUG("db1 %d", R_ct);
-
-        // don't filter on cell size
-        if (R > physconst.l_factor *
-                    (simulation_options_global->BOX_LEN / simulation_options_global->HII_DIM)) {
-            filter_box(box, box_dim, astro_options_global->HEAT_FILTER, R, 0., 0.);
-        }
-
-        LOG_ULTRA_DEBUG("db2 %d", R_ct);
-
-        // now fft back to real space
-        dft_c2r_cube(matter_options_global->USE_FFTW_WISDOM, simulation_options_global->HII_DIM,
-                     HII_D_PARA, simulation_options_global->N_THREADS, box);
-
-        LOG_ULTRA_DEBUG("db3 %d", R_ct);
-        // copy over the values
-#pragma omp parallel private(i, j, k) num_threads(simulation_options_global -> N_THREADS)
-        {
-            float curr;
-            index_huge index_r, index_f;
-#pragma omp for reduction(+ : ave_buffer) reduction(max : max_out_R) reduction(min : min_out_R)
-            for (i = 0; i < box_dim[0]; i++) {
-                for (j = 0; j < box_dim[1]; j++) {
-                    for (k = 0; k < box_dim[2]; k++) {
-                        index_r = grid_index_general(i, j, k, box_dim);
-                        index_f = grid_index_fftw_r(i, j, k, box_dim);
-                        curr = *((float *)box + index_f);
-
-                        // NOTE: Min value is on the grid BEFORE constant factor
-                        //  correct for aliasing in the filtering step
-                        if (curr < min_value) {
-                            curr = min_value;
-                        }
-
-                        // constant factors (i.e linear extrapolation to z=0 for dens.)
-                        curr = curr * const_factor;
-
-                        ave_buffer += curr;
-                        if (curr < min_out_R) min_out_R = curr;
-                        if (curr > max_out_R) max_out_R = curr;
-                        result[R_ct][index_r] = curr;
-                    }
-                }
-            }
-        }
-        average_arr[R_ct] = ave_buffer / HII_TOT_NUM_PIXELS;
-        min_arr[R_ct] = min_out_R;
-        max_arr[R_ct] = max_out_R;
-        LOG_ULTRA_DEBUG("db4 %d", R_ct);
-    }
-    LOG_ULTRA_DEBUG("db5");
-    fftwf_free(box);
-}
-
 // construct the [x_e][R_ct] tables
-// NOTE: these have always been interpolation tables in x_e, regardless of flags
 // NOTE: Frequency integrals are based on PREVIOUS x_e_ave
 //   The x_e tables are not regular, hence the precomputation of indices/interp points
 void fill_freqint_tables(double zp, double x_e_ave, double filling_factor_of_HI_zp,
-                         double *log10_Mcrit_LW_ave, int R_mm, ScalingConstants *sc) {
+                         double *log10_Mcrit_LW_ave, ScalingConstants *sc) {
     double lower_int_limit;
     int x_e_ct, R_ct;
-    int R_start, R_end;
 
-    R_start = 0;
-    R_end = astro_params_global->N_STEP_TS;
 #pragma omp parallel private(R_ct, x_e_ct, lower_int_limit) \
     num_threads(simulation_options_global -> N_THREADS)
     {
@@ -552,7 +378,7 @@ void fill_freqint_tables(double zp, double x_e_ave, double filling_factor_of_HI_
         // NOTE: The one difference currently between the halobox and density field options is the
         // weighting of the average
         //   density -> volume weighted cell average || halo -> halo weighted average
-        for (R_ct = R_start; R_ct < R_end; R_ct++) {
+        for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
             // TODO: At the moment, inhomogeneous reionization feedback cannot be accounted in
             // SpinTemperatureBox.c,
             //      see https://github.com/21cmfast/21cmFAST/issues/470. Thus, we use the
@@ -615,11 +441,9 @@ void fill_freqint_tables(double zp, double x_e_ave, double filling_factor_of_HI_
 }
 
 // calculate the global properties used for making the frequency integrals,
-//   used for filling factor, ST_OVER_PS, and NO_LIGHT
+//   used for filling factor and NO_LIGHT
 int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
-    int R_ct;
     double sum_nion = 0, sum_nion_mini = 0;
-    double zpp;
 
     // For a lot of global evolution, this code uses Nion_general. We can replace this with the halo
     // field at the same snapshot, but the nu integrals go from zp to zpp to find the tau = 1
@@ -646,9 +470,6 @@ int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
             /* initialise interpolation of the mean collapse fraction for global reionization.*/
             initialise_Nion_Ts_spline(zpp_interp_points_SFR, determine_zpp_min, determine_zpp_max,
                                       &sc);
-
-            initialise_SFRD_spline(zpp_interp_points_SFR, determine_zpp_min, determine_zpp_max,
-                                   &sc);
         } else {
             init_FcollTable(determine_zpp_min, determine_zpp_max, true);
         }
@@ -687,82 +508,9 @@ int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
 
     // Initialise freq tables & prefactors (x_e by R tables)
     fill_freqint_tables(zp, rad_setup->x_e_ave_p, rad_setup->Q_HI_zp, rad_setup->ave_log10_MturnLW,
-                        0, &sc);
+                        &sc);
 
     return sum_nion + sum_nion_mini > 1e-15 ? 0 : 1;  // NO_LIGHT returned
-}
-
-void calculate_sfrd_from_grid(int R_ct, float *dens_R_grid, float *Mcrit_R_grid, float *sfrd_grid,
-                              float *sfrd_grid_mini, double *ave_sfrd, double *ave_sfrd_mini,
-                              ScalingConstants *sc) {
-    double ave_sfrd_buf = 0;
-    double ave_sfrd_buf_mini = 0;
-    if (astro_options_global->INTEGRATION_METHOD_ATOMIC == INTEGRATION_METHOD_GAUSS_LEGENDRE ||
-        (astro_options_global->USE_MINI_HALOS &&
-         astro_options_global->INTEGRATION_METHOD_MINI == INTEGRATION_METHOD_GAUSS_LEGENDRE))
-        initialise_GL(log(M_min_R[R_ct]), log(M_max_R[R_ct]));
-
-    if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
-        if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_E_INTEGRAL) {
-            initialise_SFRD_Conditional_table(zpp_for_evolve_list[R_ct],
-                                              min_densities[R_ct] * zpp_growth[R_ct],
-                                              max_densities[R_ct] * zpp_growth[R_ct] * 1.001,
-                                              M_min_R[R_ct], M_max_R[R_ct], M_max_R[R_ct], sc);
-        } else if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_CONST_ION_EFF) {
-            initialise_FgtrM_delta_table(
-                min_densities[R_ct] * zpp_growth[R_ct], max_densities[R_ct] * zpp_growth[R_ct],
-                zpp_for_evolve_list[R_ct], zpp_growth[R_ct], sigma_min[R_ct], sigma_max[R_ct]);
-        } else {
-            LOG_ERROR("Source model %d is trying to calculate SFRD from grid, something went wrong",
-                      matter_options_global->SOURCE_MODEL);
-            Throw(ValueError);
-        }
-    }
-
-#pragma omp parallel num_threads(simulation_options_global->N_THREADS)
-    {
-        index_huge box_ct;
-        double curr_dens;
-        double curr_mcrit = 0.;
-        double fcoll;
-        double fcoll_MINI = 0;
-
-#pragma omp for reduction(+ : ave_sfrd_buf, ave_sfrd_buf_mini)
-        for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
-            curr_dens = dens_R_grid[box_ct] * zpp_growth[R_ct];
-            if (astro_options_global->USE_MINI_HALOS) curr_mcrit = Mcrit_R_grid[box_ct];
-
-            if (matter_options_global->SOURCE_MODEL == SOURCE_MODEL_E_INTEGRAL) {
-                // TODO: we use below the homogeneous ACG turnover mass, because we don't have
-                // the inhomogeneous reionization feedback in this module! (see
-                // https://github.com/21cmfast/21cmFAST/issues/470)
-                fcoll = EvaluateSFRD_Conditional(curr_dens, log10(sc->mturn_acg_homogeneous),
-                                                 zpp_growth[R_ct], M_min_R[R_ct], M_max_R[R_ct],
-                                                 M_max_R[R_ct], sigma_max[R_ct], sc);
-                sfrd_grid[box_ct] = (1. + curr_dens) * fcoll;
-
-                if (astro_options_global->USE_MINI_HALOS) {
-                    fcoll_MINI = EvaluateSFRD_Conditional_MINI(
-                        curr_dens, log10(sc->mturn_acg_homogeneous), curr_mcrit, zpp_growth[R_ct],
-                        M_min_R[R_ct], M_max_R[R_ct], M_max_R[R_ct], sigma_max[R_ct], sc);
-                    sfrd_grid_mini[box_ct] = (1. + curr_dens) * fcoll_MINI;
-                }
-            } else {
-                // NOTE: The quantity below is actually not the collapsed fraction, but its
-                // derivative with respect to redshift
-                fcoll = EvaluatedFcolldz(curr_dens, zpp_for_evolve_list[R_ct], sigma_min[R_ct],
-                                         sigma_max[R_ct]);
-                sfrd_grid[box_ct] = (1. + curr_dens) * fcoll;
-            }
-            ave_sfrd_buf += fcoll;
-            ave_sfrd_buf_mini += fcoll_MINI;
-        }
-    }
-    *ave_sfrd = ave_sfrd_buf / HII_TOT_NUM_PIXELS;
-    *ave_sfrd_mini = ave_sfrd_buf_mini / HII_TOT_NUM_PIXELS;
-
-    // These functions check for allocation
-    free_conditional_tables();
 }
 
 /*
@@ -848,11 +596,6 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
     double z_edge_factor, dzpp_for_evolve, zpp, xray_R_factor;
     double lya_flux_continuum_prefactor_mini = 0., lya_flux_injected_prefactor_mini = 0.,
            lya_flux_continuum_injected_prefactor_mini = 0.;
-    double ave_fcoll, ave_fcoll_MINI;
-    double avg_fix_term = 1.;
-    double avg_fix_term_MINI = 1.;
-    float *delta_box_input;
-    float *Mcrit_box_input = NULL;  // may be unused
 
     dzpp_for_evolve = dzpp_list[R_ct];
     zpp = zpp_for_evolve_list[R_ct];
@@ -940,8 +683,8 @@ void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
                     sfr_term * lya_flux_continuum_injected_prefactor[R_ct] +
                     sfr_term_mini * lya_flux_continuum_injected_prefactor_mini;
             }
-        }  // end of box_ct loop
-    }  // end of pragma loop
+        }
+    }
 }
 
 /*
