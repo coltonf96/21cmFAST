@@ -70,7 +70,6 @@ typedef struct SimulationOptions {
 } SimulationOptions;
 
 typedef struct MatterOptions {
-    bool USE_NEW_CODE;
     bool USE_FFTW_WISDOM;
     bool PERTURB_ON_HIGH_RES;
     bool MINIMIZE_MEMORY;

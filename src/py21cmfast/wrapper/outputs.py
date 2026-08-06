@@ -1470,26 +1470,18 @@ class TsBox(OutputStructZ):
             if self.astro_options.USE_MINI_HALOS:
                 required += ["J_21_LW"]
         elif isinstance(input_box, RadiationFields):
-            if (
-                self.matter_options.lagrangian_source_grid
-                or self.matter_options.USE_NEW_CODE
-            ):
-                required += ["filtered_sfr", "filtered_xray"]
-                if self.astro_options.USE_MINI_HALOS:
-                    required += ["filtered_sfr_mini"]
+            required += [
+                "xray_ionization_rate",
+                "xray_lya_flux",
+            ]
+            if self.astro_options.USE_X_RAY_HEATING:
+                required += ["xray_heating_rate"]
+            if self.astro_options.USE_MINI_HALOS:
+                required += ["lyw_flux"]
+            if self.astro_options.USE_LYA_HEATING:
+                required += ["lya_flux_continuum", "lya_flux_injected"]
             else:
-                required += [
-                    "xray_ionization_rate",
-                    "xray_lya_flux",
-                ]
-                if self.astro_options.USE_X_RAY_HEATING:
-                    required += ["xray_heating_rate"]
-                if self.astro_options.USE_MINI_HALOS:
-                    required += ["lyw_flux"]
-                if self.astro_options.USE_LYA_HEATING:
-                    required += ["lya_flux_continuum", "lya_flux_injected"]
-                else:
-                    required += ["lya_flux_continuum_injected"]
+                required += ["lya_flux_continuum_injected"]
         else:
             raise ValueError(f"{type(input_box)} is not an input required for TsBox!")
 

@@ -766,7 +766,6 @@ class MatterOptions(InputStruct):
           the 'DEXM-ESF' method for halos above the HII_DIM cell mass.
     """
 
-    USE_NEW_CODE: bool = field(default=False, converter=bool)
     HMF: Literal["PS", "ST", "WATSON", "WATSON-Z", "DELOS", "REED07", "YUNG24"] = (
         choice_field(default="ST")
     )
@@ -2103,10 +2102,7 @@ class InputParameters:
                 raise ValueError(
                     f"USE_EXP_FILTER is not compatible with SOURCE_MODEL == {self.matter_options.SOURCE_MODEL}"
                 )
-            if val.LYA_MULTIPLE_SCATTERING and not self.matter_options.USE_NEW_CODE:
-                raise ValueError(
-                    f"LYA_MULTIPLE_SCATTERING is not compatible with SOURCE_MODEL == {self.matter_options.SOURCE_MODEL}"
-                )
+
         if (
             not self.matter_options.has_discrete_halos
             and val.USE_UPPER_STELLAR_TURNOVER

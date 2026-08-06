@@ -326,16 +326,12 @@ class RunCache:
 
         others = {
             "PerturbedField": {},
+            "HaloBox": {},
             "IonizedBox": {},
             "BrightnessTemp": {},
         }
         if inputs.astro_options.USE_TS_FLUCT:
-            others |= {"TsBox": {}}
-        if (
-            inputs.matter_options.lagrangian_source_grid
-            or inputs.matter_options.USE_NEW_CODE
-        ):
-            others |= {"RadiationFields": {}, "HaloBox": {}}
+            others |= {"RadiationFields": {}, "TsBox": {}}
         if inputs.matter_options.has_discrete_halos:
             others |= {"HaloCatalog": {}}
 
