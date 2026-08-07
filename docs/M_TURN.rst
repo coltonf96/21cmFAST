@@ -1,7 +1,7 @@
 Turnover Mass in ``21cmFAST``
 =============================
 
-One of the most important physical quantities in ``21cmFAST`` is the mass scale at
+One of the most important physical quantities in ``21cmFAST`` is the mass scale above
 which the gas inside halos can cool down to form stars. This is often referred to as
 the "turnover mass" or :math:`M_{\rm turn}`. The value of :math:`M_{\rm turn}` can have
 significant implications for the formation of the first galaxies and the subsequent evolution
@@ -11,7 +11,7 @@ the fraction of halos of mass :math:`M_h` that can host galaxies, given a turnov
 mass :math:`M_{\rm turn}`. The duty fraction function is thus expected to have a cutoff
 (either sharp or smooth) at the turnover mass.
 
-Over the time, both the turnover mass and the duty fraction function have been modified
+Over time, both the turnover mass and the duty fraction function have been modified
 in different versions of ``21cmFAST``. We document below the changes in these properties.
 
 ``21cmFAST`` v1.0.0
@@ -26,11 +26,7 @@ cutoff at the turnover mass,
     f_{\rm duty}(M_h;M_{\rm turn}) = H(M_h-M_{\rm turn}),
 
 
-where :math:`H(x)` is the Heaviside step function. Meanwhile, the turnover mass was redshift-dependent
-and was defined as the halo mass that corresponds to a virial temperature of :math:`10^4` K, which is
-the threshold mass for atomic cooling, :math:`M_{\rm atom}(z)`. This mass scale was obtained by inverting
-Eq. 26 in Barkana & Loeb 2001 (https://arxiv.org/pdf/astro-ph/0010468) with :math:`T_{\rm vir}=10^4` K
-and a mean molecular weight of :math:`\mu=0.59`, corresponding to a fully ionized IGM. Approximately,
+where :math:`H(x)` is the Heaviside step function. As the time, the common name for the "turnover mass" was "minimum mass" or :math:`M_{\rm min}`. The user could define the turnover mass in terms of the halo mass or the corresponding virial temperature, with the latter implying a redshift dependence to the halo mass (c.f. Eq. 26 in Barkana & Loeb 2001 https://arxiv.org/pdf/astro-ph/0010468).  A common choice was a virial temperature of :math:`10^4` K, which is the threshold mass above which cooling through recombing hydrogen radiation is efficient (i.e. assuming ionized IGM with a mean molecular weight of :math:`\mu=0.59`). Approximately,
 the turnover mass can be written as
 
 .. math::
@@ -48,10 +44,9 @@ exponential cutoff at the turnover mass,
 
     f_{\rm duty}(M_h;M_{\rm turn}) = \exp\left(-M_{\rm turn}/M_h\right).
 
-Here, :math:`M_{\rm turn}` was introduced as a new free parameter that the user had to provide.
-In addition, this version also introduced a mass-dependent ionization efficiency model.
+In addition, this version also introduced a mass-DEPENDENT ionization efficiency model.
 Note that a sharp cutoff at the turnover mass (like in v1.0.0.) was still available in v2.0.0,
-but only if the user set the ionization efficiency to be mass-independent.
+but only if the user set the ionization efficiency to be mass-inDEPENDENT.
 
 ``21cmFAST`` v3.0.0
 -------------------
@@ -82,24 +77,24 @@ increasing probability of galaxies in these halos to be formed as ACGs rather th
 ``21cmFAST`` v3.0.0 introduced several flags and parameters that allowed the user to switch
 between different models:
 
-* ``USE_MASS_DEPNDENT_ZETA``:
+* ``USE_MASS_DEPENDENT_ZETA``:
   If True, the ionization efficiency (:math:`\zeta`) is allowed to
   depend on the halo mass, as in v2.0.0, otherwise, the ionization efficiency is constant for
   all halo masses, as in v1.0.0. Note that this flag also controlled the duty fraction function,
-  as the mass-dependent ionization efficiency model had an exponential cutoff, while the
-  mass-independent model had a sharp cutoff.
+  as the mass-DEPENDENT ionization efficiency model had an exponential cutoff, while the
+  mass-inDEPENDENT model had a sharp cutoff.
 
 * ``USE_MINI_HALOS``:
   If True, the user can include molecular cooling galaxies (MCGs) in the
   simulation, which are assumed to reside inside "mini-halos". If False, only atomic cooling galaxies
   (ACGs) are included, as in v2.0.0 and v1.0.0. Note that this flag could have been turned on only if
-  ``USE_MASS_DEPNDENT_ZETA`` was also True.
+  ``USE_MASS_DEPENDENT_ZETA`` was also True.
 
 * ``M_MIN_in_Mass``:
   If True, the ACG turnover mass is given by the user-defined parameter ``M_TURN``. If False, the ACG
   turnover mass is given by the atomic cooling threshold, :math:`M_{\rm atom}(z)`, whereas
-  the virial temperature is given by the new parameters ``ION_Tvir_MIN`` and ``X_RAY_Tvir_MIN`` (see below).
-  Note that this logic however was only applied if ``USE_MASS_DEPNDENT_ZETA`` was False (and therefore
+  the virial temperature is given by the parameters ``ION_Tvir_MIN`` and ``X_RAY_Tvir_MIN`` (see below).
+  Note that this logic however was only applied if ``USE_MASS_DEPENDENT_ZETA`` was False (and therefore
   ``USE_MINI_HALOS`` was False as well). The idea behind this parameterization was that it can capture both
   the atomic cooling threshold and the effect of stellar feedback on the ACG turnover mass.
 
@@ -108,10 +103,10 @@ between different models:
   ``M_MIN_in_Mass`` was True. Otherwise, this parameter was ignored.
 
 * ``ION_Tvir_MIN``:
-  The minimum virial temperature for halos that can host ionizing sources.
+  The minimum virial temperature for halos that can host ionizing sources. Introduced in v2.
 
 * ``X_RAY_Tvir_MIN``:
-  The minimum virial temperature for halos that can host X-ray sources.
+  The minimum virial temperature for halos that can host X-ray sources. Introduced in v2.
 
 In addition, v3.0.0 introduced the generation of a realization of the :math:`v_{\rm cb}` field,
 though it was not used in the code to modify the MCG turnover mass until v3.1.0 (see below).
@@ -134,7 +129,7 @@ since it was different for different flag combinations.
       :math:`M_{\rm reion}(z)`. Just like for ACGs, the reionization feedback was applied only in
       the reionization module, whereas it was ignored in the spin temperature module.
 * Otherwise:
-    * If ``USE_MASS_DEPNDENT_ZETA`` is True, the ACG turnover mass was set to be the user-defined
+    * If ``USE_MASS_DEPENDENT_ZETA`` is True, the ACG turnover mass was set to be the user-defined
       parameter ``M_TURN``.
     * Otherwise:
         * If ``M_MIN_in_Mass`` is True, the ACG turnover mass was set to be the user-defined parameter
@@ -209,14 +204,14 @@ model with stochastic discrete halos was introduced. The source model that was u
 simulation was controlled by a new parameter called ``SOURCE_MODEL``. This parameter had several options:
 
 * ``"CONST-ION-EFF"``:
-  This option was equivalent to setting ``USE_MASS_DEPNDENT_ZETA`` on False
+  This option was equivalent to setting ``USE_MASS_DEPENDENT_ZETA`` on False
   in previous versions, namely the ionization efficiency was constant for all halo masses, the ACG
   turnover mass was set according to the ``M_MIN_in_Mass`` flag, and the ACG duty fraction function
   was a sharp cutoff at the ACG turnover mass.
 
 * ``"E-INTEGRAL"``:
-  This option was equivalent to setting ``USE_MASS_DEPNDENT_ZETA`` on True in
-  previous versions, namely the ionization efficiency was mass-dependent, the duty fraction functions
+  This option was equivalent to setting ``USE_MASS_DEPENDENT_ZETA`` on True in
+  previous versions, namely the ionization efficiency was mass-DEPENDENT, the duty fraction functions
   were smooth exponential cutoffs, and the turnover masses were set according to the logic of v3.1.0
   (with one change, see below). This option was named like that, since the emissivity fields were
   computed on the Eulerian density grid, as in previous versions of ``21cmFAST``.
@@ -224,7 +219,7 @@ simulation was controlled by a new parameter called ``SOURCE_MODEL``. This param
 * ``"L-INTEGRAL"``:
   This is a new source model that was introduced in v4.0.0, where the emissivity
   fields were computed on the Lagrangian density grid, and then mapped to the Eulerian grid. The
-  ionization efficiency was mass-dependent, the duty fraction functions were smooth exponential cutoffs,
+  ionization efficiency was mass-DEPENDENT, the duty fraction functions were smooth exponential cutoffs,
   and a new logic for the turnover masses was introduced (see below). No discrete halos were used in
   this source model, unlike the source models described below.
 
@@ -253,8 +248,8 @@ Turnover mass logic in ``21cmFAST`` v4.0.0
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Only two out of the five source models in v4.0.0 were supported in v3.1.0, these
-are ``"CONST-ION-EFF"`` and ``"E-INTEGRAL"`` source models. For the ``"CONST-ION-EFF"`` source model (analogous to v3.1.0 with ``USE_MASS_DEPNDENT_ZETA``
-set to False), the logic for the ACG turnover mass has remained exactly the same as in v3.1.0. However, for the ``"E-INTEGRAL"`` source model (analogous to v3.1.0 with ``USE_MASS_DEPNDENT_ZETA``
+are ``"CONST-ION-EFF"`` and ``"E-INTEGRAL"`` source models. For the ``"CONST-ION-EFF"`` source model (analogous to v3.1.0 with ``USE_MASS_DEPENDENT_ZETA``
+set to False), the logic for the ACG turnover mass has remained exactly the same as in v3.1.0. However, for the ``"E-INTEGRAL"`` source model (analogous to v3.1.0 with ``USE_MASS_DEPENDENT_ZETA``
 set to True), a subtle but important change has been made. Now, the stellar feedback mass,
 which is given by the user-defined parameter ``M_TURN``, was taken into account in the logic
 for the turnover masses when ``USE_MINI_HALOS`` was True: The new logic for the turnover masses
@@ -300,11 +295,11 @@ The options for the new parameter ``V_CB_MODEL`` were:
   value of 27 km/s was used for setting the homogeneous :math:`v_{\rm cb}` value).
 
 * ``"FLUCTS"``:
-  The inhomogeneous :math:`v_{\rm cb}` effect on the MCG turnover mass was accounted.
+  The inhomogeneous :math:`v_{\rm cb}` effect on the MCG turnover mass is computed.
   This was equivalent to setting ``USE_RELATIVE_VELOCITIES`` on True and ``FIX_VCB_AVG`` on False in v4.0.0.
 
 * ``"AVG-DEBUG"``:
-  The homogeneous :math:`v_{\rm cb}` effect on the MCG turnover mass was accounted,
+  The homogeneous :math:`v_{\rm cb}` effect on the MCG turnover mass is assumed,
   with a value set by the user-defined parameter ``V_CB_AVG_DEBUG``. This was equivalent to
   setting ``FIX_VCB_AVG`` on True in v4.0.0.
 
