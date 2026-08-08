@@ -290,25 +290,17 @@ def compute_luminosity_function(
         redshifts, inputs.node_redshifts[::-1], mturnovers_mini_global[::-1]
     )
 
-    lfunc = np.zeros(len(redshifts) * nbins)
-    Muvfunc = np.zeros(len(redshifts) * nbins)
-    Mhfunc = np.zeros(len(redshifts) * nbins)
-
-    lfunc.shape = (len(redshifts), nbins)
-    Muvfunc.shape = (len(redshifts), nbins)
-    Mhfunc.shape = (len(redshifts), nbins)
+    lfunc = np.zeros((len(redshifts), nbins))
+    Muvfunc = np.zeros((len(redshifts), nbins))
+    Mhfunc = np.zeros((len(redshifts), nbins))
 
     c_Muvfunc = ffi.cast("double *", ffi.from_buffer(Muvfunc))
     c_Mhfunc = ffi.cast("double *", ffi.from_buffer(Mhfunc))
     c_lfunc = ffi.cast("double *", ffi.from_buffer(lfunc))
 
-    lfunc_MINI = np.zeros(len(redshifts) * nbins)
-    Muvfunc_MINI = np.zeros(len(redshifts) * nbins)
-    Mhfunc_MINI = np.zeros(len(redshifts) * nbins)
-
-    lfunc_MINI.shape = (len(redshifts), nbins)
-    Muvfunc_MINI.shape = (len(redshifts), nbins)
-    Mhfunc_MINI.shape = (len(redshifts), nbins)
+    lfunc_MINI = np.zeros((len(redshifts), nbins))
+    Muvfunc_MINI = np.zeros((len(redshifts), nbins))
+    Mhfunc_MINI = np.zeros((len(redshifts), nbins))
 
     c_Muvfunc_MINI = ffi.cast("double *", ffi.from_buffer(Muvfunc_MINI))
     c_Mhfunc_MINI = ffi.cast("double *", ffi.from_buffer(Mhfunc_MINI))
