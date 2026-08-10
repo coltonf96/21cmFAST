@@ -78,10 +78,26 @@ def spin_temp_evolution(ic: InitialConditions, default_input_struct_ts: TsBox, c
             inputs=default_input_struct_ts,
             cache=cache,
         )
+        hb = p21c.compute_halo_grid(
+            redshift=z,
+            initial_conditions=ic,
+            perturbed_field=pt,
+            inputs=default_input_struct_ts,
+            cache=cache,
+        )
+
+        rf = p21c.compute_radiation_fields(
+            initial_conditions=ic,
+            hboxes=[hb],
+            redshift=z,
+            cache=cache,
+        )
+
         st = p21c.compute_spin_temperature(
             initial_conditions=ic,
             perturbed_field=pt,
             previous_spin_temp=st_prev,
+            radiation_fields=rf,
             inputs=default_input_struct_ts,
             cache=cache,
         )
@@ -89,6 +105,8 @@ def spin_temp_evolution(ic: InitialConditions, default_input_struct_ts: TsBox, c
             {
                 "redshift": z,
                 "perturbed_field": pt,
+                "halo_box": hb,
+                "radiation_fields": rf,
                 "spin_temp": st,
             }
         )

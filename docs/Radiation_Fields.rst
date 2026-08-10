@@ -26,25 +26,25 @@ galaxy, :math:`i` runs over the species in the IGM that are relevant to the proc
 ionized electron of energy :math:`E_e = h_{\rm P}\nu - E^i_{\rm th}` that is deposited as heat in the IGM (a function of :math:`E_e` and
 the local ionization fraction), :math:`f_i` is the number fraction of species :math:`i` in the IGM, and :math:`\sigma_i(\nu)` is the
 cross-section for photo-ionization of a particle from species :math:`i` due to the interaction with an X-ray photon of frequency :math:`\nu`.
-To understand the above experssion, let us consider the following components:
+To understand the above expression, let us consider the following components:
 
 * :math:`f_i \sigma_i(\nu) J_X(\nu)` is the production rate of electrons (with energy :math:`E_e`) per gas particle per
-frequency (of the incoming photons) per solid angle (of the incoming photons), that were produced from the
-interaction of particles of species :math:`i` with X-ray photons.
+  frequency (of the incoming photons) per solid angle (of the incoming photons), that were produced from the
+  interaction of particles of species :math:`i` with X-ray photons.
 * :math:`(h_{\rm P}\nu - E^i_{\rm th})f_{\rm heat}` is the energy deposited to the IGM as heat per electron with energy :math:`E_e`.
 * Once we apply :math:`\int_{\nu_{min}}^{\infty} d\nu \sum_i` we account for all the species and all the frequencies. The multiplication
-by :math:`4\pi` is needed in order to account all the directions from which the X-ray photons come. Combining everything together we end
-up with the desired heat transfer rate per gas particle.
+  by :math:`4\pi` is needed in order to account all the directions from which the X-ray photons come. Combining everything together we end
+  up with the desired heat transfer rate per gas particle.
 
 Given the heat transfer rate, the X-ray heating rate is given by
 
 .. math::
 
-    \left.\frac{dT_k}{dt}\right|_{X} = \frac{2}{3 k_B} \frac{\Gamma_X}{1 + x_e},
+    \left.\frac{dT_k}{dt}\right\Bigg|_X = \frac{2}{3 k_B} \frac{\Gamma_X}{1 + x_e},
 
 where :math:`k_B` is Boltzmann's constant and :math:`x_e` is the local ionization fraction. The X-ray heating rate is thus a physical
 quantity that can be represented as a 3D box at a given redshift, and is thus considered a "radiation field" in ``21cmFAST``.
-Similarly, the photionization rate due to X-ray radiation, as well as the contribution to the Lyman-alpha flux from X-ray excitation of HI
+Similarly, the photoionization rate due to X-ray radiation, as well as the contribution to the Lyman-alpha flux from X-ray excitation of HI
 atoms, are also considered "radiation fields".
 
 Fluxes in ``21cmFAST``
@@ -79,8 +79,8 @@ regardless of the actual density field that the photon encountered in its path, 
 traditional radiative transfer codes.
 
 The Lyman alpha flux from continuum photons (photons that were emitted with frequency below Lyman beta and redshifted into Lyman alpha) and
-injected photons (photons that were emitted with frequency above Lyman beta and went atomic cascades once they had redshifted into a Lyman
-resonance) is computed in a similar manner,
+injected photons (photons that were emitted with frequency above Lyman beta and went through atomic cascades once they had redshifted
+into a Lyman resonance) is computed in a similar manner,
 
 .. math::
 
@@ -125,9 +125,9 @@ X-ray photons per unit stellar mass (the latter two are free parameters). Meanwh
 
 .. math::
 
-    \epsilon_\alpha(z, \delta) = \bar\n_b(z=0) (1+\delta) N_{\gamma /{\rm b}} f_* \frac{d}{dt}f_{\rm coll}(z, M_{\rm turn} ; \delta, M_{\rm cond}),
+    \epsilon_\alpha(z, \delta) = \bar n_b(z=0) (1+\delta) N_{\gamma /{\rm b}} f_* \frac{d}{dt}f_{\rm coll}(z, M_{\rm turn} ; \delta, M_{\rm cond}),
 
-where :math:`\bar\n_b` is the mean baryon number density and :math:`N_{\gamma /{\rm b}}` is the number of stellar photons per baryon
+where :math:`\bar n_b` is the mean baryon number density and :math:`N_{\gamma /{\rm b}}` is the number of stellar photons per baryon
 (the latter is a free parameter).
 
 Note that both :math:`\epsilon_X` and :math:`\epsilon_\alpha` are functions of the local overdensity :math:`\delta` and thus
@@ -141,12 +141,12 @@ As for the conditional collapsed fraction, it is given by
 
 where :math:`\bar\rho_m` is the mean matter density and :math:`dn/dM_h(z, M_h ; \delta_{\rm cond}, M_{\rm cond})` is the conditional halo
 mass function in a region of size :math:`R(M_{\rm cond}) = [3M_{\rm cond}/(4\pi \bar\rho_m)]^{1/3}` and overdensity :math:`\delta_{\rm cond}`.
-For the calculation of the conditionl collapsed fraction, ``21cmFAST`` v1.0.0 assumed that the conditional halo mass function was given
+For the calculation of the conditional collapsed fraction, ``21cmFAST`` v1.0.0 assumed that the conditional halo mass function was given
 by the Sheth-Tormen conditional mass function. Under this assumption, the conditional collapsed fraction has an analytical form,
 
 .. math::
 
-    f_{\rm coll}(z, M_{\rm turn} ; \delta, M_{\rm cond}) = {\rm erfc}\left[\frac{\delta_c - \delta}{D(z)\sqrt{2(\sigma^2(M_{\rm turn}) - \sigma^2(M_{\rm cond}))}}\right],
+    f_{\rm coll}(z, M_{\rm turn} ; \delta, M_{\rm cond}) = {\rm erfc}\left[\frac{\delta_c - \delta}{D(z)\left(2(\sigma^2(M_{\nu}) - \sigma^2(M_{\rm cond}))\right)^{1/2}}\right],
 
 where :math:`{\rm erfc}` is the complementary error function, :math:`\delta_c=1.686` is the critical overdensity for collapse,
 and :math:`\sigma^2(M)` is the variance of the linear density field, smoothed with a top-hat filter of
@@ -154,7 +154,7 @@ radius :math:`R(M) = [3M/(4\pi \bar\rho_m)]^{1/3}`.
 
 While ``21cmFAST`` v1.0.0 used the analytical result for the conditional collapsed fraction from the extended Press-Schechter formalism
 in order to assess the fluctuations in the emissivity fields, the code also normalized the mean collapsed fraction in the box to match
-the global collapsed fraction, as given by solving the above intergral numerically with the user's selected halo mass function
+the global collapsed fraction, as given by solving the above integral numerically with the user's selected halo mass function
 (which by default was the Sheth-Tormen mass function).
 
 Effective Emissivity Fields
@@ -162,7 +162,7 @@ Effective Emissivity Fields
 
 Given the above definitions for the emissivity fields, the effective emissivity fields are achieved by interpolating in time/redshift and
 filtering in space. Since ``21cmFAST`` v1.0.0 did not have the emissivity fields on a grid, the interpolation and filtering was done in
-the following way. Firstly, given they Eulerian density field :math:`\delta_{\rm E}(z, \mathbf{x})` at redshift :math:`z` (the current
+the following way. Firstly, given the Eulerian density field :math:`\delta_{\rm E}(z, \mathbf{x})` at redshift :math:`z` (the current
 snapshot's redshift), the code evaluated the density field at the integrated redshift :math:`z'` by scaling with the linear growth factor,
 namely :math:`\delta_{\rm E}(z', \mathbf{x}) \approx \delta_{\rm E}(z, \mathbf{x}) D(z')/D(z)`. Then, instead of filtering the emissivity
 fields, the code filtered the density field with a top-hat filter of radius :math:`R` to get the smoothed density field
@@ -251,11 +251,11 @@ the code as in previous versions. The LW flux is given by
 where :math:`\nu_\alpha` is the Lyman-alpha frequency. Several notes:
 
 * Note that unlike previous radiation fields, the LW flux contains units of energy, owned by the factor of :math:`h_{\rm P}\nu_\alpha`.
-* The contribution to the LW flux came from both atomic cooling galaxies (ACGs) and MCGs, as the SFRD in both populations is modedled a bit
+* The contribution to the LW flux came from both atomic cooling galaxies (ACGs) and MCGs, as the SFRD in both populations is modeled a bit
 differently, mostly in the modeling of the star formation efficiency, the turnover mass and the duty fraction (see more details on the
 latter two in :doc:`M_TURN`). Likewise, the contribution to the X-ray and Lyman-alpha fluxes also came from both ACGs and MCGs.
 * It was assumed that ACGs contained only popII stars, while MCGs contained only popIII stars. Therefore,
-the shape of the SEDs in ACGs and MCGs were also different in the evaluation of Lyman-alpha and LW fluxes, as well their amplitudes
+the shape of the SEDs in ACGs and MCGs were also different in the evaluation of Lyman-alpha and LW fluxes, as well as their amplitudes
 (controlled by the free parameter :math:`N_{\gamma /{\rm b}}`, which was now split into two free parameters). However, for the evaluation
 of the X-ray flux, the SEDs in both ACGs and MCGs were assumed to be the same, and were modeled as in previous versions, namely
 :math:`I_X(\nu')\propto\nu'^{-\alpha_X}`, where :math:`\alpha_X` is a free parameter.
@@ -271,17 +271,17 @@ emissivity fields and the radiation fields was changed for several new configura
 controlled by the new enum parameter ``SOURCE_MODEL``, which had five options:
 
 * ``"CONST-ION-EFF"``:
-  This option was equivalent to setting ``USE_MASS_DEPNDENT_ZETA`` to False in previous versions.
+  This option was equivalent to setting ``USE_MASS_DEPENDENT_ZETA`` to False in previous versions.
 
 * ``"E-INTEGRAL"``:
-  This option was equivalent to setting ``USE_MASS_DEPNDENT_ZETA`` to True in previous versions.
+  This option was equivalent to setting ``USE_MASS_DEPENDENT_ZETA`` to True in previous versions.
 
 * ``"L-INTEGRAL"``:
   This is a new source model that was introduced in v4.0.0. It was similar to ``"E-INTEGRAL"``, but the emissivity
   fields were computed on the Lagrangian density grid, and then mapped to the Eulerian grid (see details below).
 
 * ``"DEXM-ESF"``:
-  This is a new source model that was introduced in v4.0.0, similar to ``"L-INTEGRAL"``, but the emissivity fields recieved
+  This is a new source model that was introduced in v4.0.0, similar to ``"L-INTEGRAL"``, but the emissivity fields received
   contributions from resolved discrete halos that were found via the excursion-set formalism (ESF), as was implemented by
   the ``DEXM`` algorithm (see Mesinger & Furlanetto 2007, https://arxiv.org/pdf/0704.0946).
 
@@ -306,9 +306,9 @@ the fields at :math:`z'`:
     \epsilon(z, \mathbf{x}) \to \epsilon^{\rm eff}(z', \mathbf{x})=\epsilon[z', \delta_{\rm E}^R(z,\mathbf{x}) D(z')/D(z)].
 
 In contrast, for the three "Lagrangian" source models, the emissivity fields were computed on the Lagrangian density grid, and were
-then advected to the Eulerian grid by an algorithm similar to 2LPT. Moroever, the emissivity fields in the "Lagrangian" source models
-were computed as an interemediate output of the code (stored in the ``HaloBox`` class). This enabled to interpolate the emissivity fields
-at redshift :math:`z'`. Then, for each spherical integrated shell with innter radius :math:`R_{\rm i}` and outer radius :math:`R_{\rm o}`,
+then advected to the Eulerian grid by an algorithm similar to 2LPT. Moreover, the emissivity fields in the "Lagrangian" source models
+were computed as an intermediate output of the code (stored in the ``HaloBox`` class). This enabled to interpolate the emissivity fields
+at redshift :math:`z'`. Then, for each spherical integrated shell with inner radius :math:`R_{\rm i}` and outer radius :math:`R_{\rm o}`,
 the interpolated emissivity fields :math:`\epsilon(z', \mathbf{x})` were filtered with a spherical shell filter with the appropriate radii.
 All the effective emissivities, for all the spherical integrated shells, were then stored in the ``XraySourceBox`` class, which contained
 4D arrays (three spatial dimensions, and an extra dimension that indicates the integrated shell). Thus, in contrast to the "Eulerian"
@@ -338,16 +338,17 @@ computed on the Lagrangian density grid and then advected to the Eulerian grid.
 
 Furthermore, in v4.3.0, the effect of Lyman-alpha multiple scattering could have been applied via a new flag called ``LYA_MULTIPLE_SCATTERING``,
 regardless if the simulated source model was "Eulerian" or "Lagrangian". When this flag was set to True, the effective emissivity for
-Lyman-alpha photons was achieved by filtering the interpolated emissivity field with a generalization of the sphericall shell filter
+Lyman-alpha photons was achieved by filtering the interpolated emissivity field with a generalization of the spherical shell filter
 (see more details in Flitter, Munoz and Mesinger 2026, https://arxiv.org/pdf/2601.14360).
 
 ``21cmFAST`` v4.3.0 was also the first version in which the radiation fields were accessible to the user via a new output class called
 ``RadiationFields``. This class contained the 3D realizations of the following fields:
-* `xray_heating_rate`: the X-ray heating rate.
-* `xray_ionization_rate`: the X-ray ionization rate.
-* `xray_lya_flux`: the Lyman-alpha flux from X-ray excitation of HI.
-* `lya_flux_continuum`: the Lyman-alpha flux from continuum photons.
-* `lya_flux_injected`: the Lyman-alpha flux from injected photons.
-* `lya_flux_continuum_injected`: the total Lyman-alpha flux from both continuum and injected photons.
-* `lyw_flux`: the Lyman-Werner flux.
+
+* ``xray_heating_rate``: the X-ray heating rate.
+* ``xray_ionization_rate``: the X-ray ionization rate.
+* ``xray_lya_flux``: the Lyman-alpha flux from X-ray excitation of HI.
+* ``lya_flux_continuum``: the Lyman-alpha flux from continuum photons.
+* ``lya_flux_injected``: the Lyman-alpha flux from injected photons.
+* ``lya_flux_continuum_injected``: the total Lyman-alpha flux from both continuum and injected photons.
+* ``lyw_flux``: the Lyman-Werner flux.
 Meanwhile, the class ``XraySourceBox`` from v4.0.0 was removed in v4.3.0.
