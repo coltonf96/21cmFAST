@@ -243,7 +243,6 @@ OPTIONS_TESTRUNS = {
     "minimize_mem": [
         18,
         {
-            "USE_TS_FLUCT": True,
             "RECOMB_MODEL": "inhomogeneous",
             "R_BUBBLE_MAX": 50.0,
             "MINIMIZE_MEMORY": True,
