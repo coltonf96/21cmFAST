@@ -1206,8 +1206,7 @@ def convert_halo_properties(
         star formation rate (MCG)
         ACG turnover mass
         MCG turnover mass
-        Reionization turnover mass
-        Metallicity
+        Metallicity (ACG)
     """
     # single element zero array to act as the grids (vcb, J_21_LW, z_reion, Gamma12)
     if not (halo_masses.shape == star_rng.shape == sfr_rng.shape == xray_rng.shape):

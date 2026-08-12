@@ -461,8 +461,8 @@ void get_halo_metallicity(double sfr, double stellar, double redshift, double *z
     *z_out = z_sample;
 }
 
-void get_halo_xray(double sfr, double sfr_mini, double metallicity, double xray_rng,
-                   ScalingConstants *consts, double *xray_out) {
+void get_halo_xray(double sfr, double sfr_mini, double metallicity, double metallicity_mini,
+                   double xray_rng, ScalingConstants *consts, double *xray_out) {
     double sigma_xray = consts->sigma_xray;
     double mu_x, xray_sample;
 
@@ -476,7 +476,7 @@ void get_halo_xray(double sfr, double sfr_mini, double metallicity, double xray_
     if (astro_options_global->USE_MINI_HALOS) {
         // Since there *are* some SFR-dependent
         // models, this is done separately
-        mu_x_mini = get_lx_on_sfr(sfr_mini, metallicity, consts->l_x_mini) *
+        mu_x_mini = get_lx_on_sfr(sfr_mini, metallicity_mini, consts->l_x_mini) *
                     (sfr_mini * physconst.s_per_yr);
     }
     mu_x += mu_x_mini;
