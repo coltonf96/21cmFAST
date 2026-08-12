@@ -36,9 +36,12 @@ double EvaluateNion_Conditional_MINI(double delta, double log10Mturn_acg, double
 void initialise_Xray_Conditional_table(double redshift, double min_density, double max_density,
                                        double Mmin, double Mmax, double Mcond,
                                        ScalingConstants *sc);
-double EvaluateXray_Conditional(double delta, double log10Mturn_acg, double log10Mturn_mcg,
-                                double redshift, double growthf, double M_min, double M_max,
-                                double M_cond, double sigma_max, ScalingConstants *sc);
+double EvaluateXray_Conditional(double delta, double log10Mturn_acg, double redshift,
+                                double growthf, double M_min, double M_max, double M_cond,
+                                double sigma_max, ScalingConstants *sc);
+double EvaluateXray_Conditional_MINI(double delta, double log10Mturn_acg, double log10Mturn_mcg,
+                                     double redshift, double growthf, double M_min, double M_max,
+                                     double M_cond, double sigma_max, ScalingConstants *sc);
 void initialise_SFRD_Conditional_table(double z, double min_density, double max_density,
                                        double Mmin, double Mmax, double Mcond,
                                        ScalingConstants *sc);

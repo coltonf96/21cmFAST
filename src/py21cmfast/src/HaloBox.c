@@ -142,8 +142,11 @@ int get_uhmf_averages(double M_min, double M_max, double M_turn_acg, double M_tu
                                                    M_turn_mcg, &consts_sfrd);
     }
     if (astro_options_global->USE_TS_FLUCT) {
-        integral_xray =
-            Xray_General(consts->redshift, lnMmin, lnMmax, M_turn_acg, M_turn_mcg, consts);
+        integral_xray = Xray_General(consts->redshift, lnMmin, lnMmax, M_turn_acg, consts);
+        if (astro_options_global->USE_MINI_HALOS) {
+            integral_xray +=
+                Xray_General_MINI(consts->redshift, lnMmin, lnMmax, M_turn_acg, M_turn_mcg, consts);
+        }
     }
 
     averages_out->count = Nhalo_General(consts->redshift, lnMmin, lnMmax) * prefactor_mass *
@@ -279,8 +282,13 @@ void get_cell_integrals(double dens, double l10_mturn_acg, double l10_mturn_mcg,
 
     if (astro_options_global->USE_TS_FLUCT) {
         properties->halo_xray =
-            EvaluateXray_Conditional(dens, l10_mturn_acg, l10_mturn_mcg, consts->redshift, growth_z,
-                                     M_min, M_max, M_cell, sigma_cell, consts);
+            EvaluateXray_Conditional(dens, l10_mturn_acg, consts->redshift, growth_z, M_min, M_max,
+                                     M_cell, sigma_cell, consts);
+        if (astro_options_global->USE_MINI_HALOS) {
+            properties->halo_xray +=
+                EvaluateXray_Conditional_MINI(dens, l10_mturn_acg, l10_mturn_mcg, consts->redshift,
+                                              growth_z, M_min, M_max, M_cell, sigma_cell, consts);
+        }
     }
 
     if (config_settings.EXTRA_HALOBOX_FIELDS) {

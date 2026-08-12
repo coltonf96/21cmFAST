@@ -25,8 +25,10 @@ double Nion_General(double z, double lnM_Min, double lnM_Max, double mturn_acg,
                     ScalingConstants *sc);
 double Nion_General_MINI(double z, double lnM_Min, double lnM_Max, double mturn_acg,
                          double mturn_mcg, ScalingConstants *sc);
-double Xray_General(double z, double lnM_Min, double lnM_Max, double mturn_acg, double mturn_mcg,
+double Xray_General(double z, double lnM_Min, double lnM_Max, double mturn_acg,
                     ScalingConstants *sc);
+double Xray_General_MINI(double z, double lnM_Min, double lnM_Max, double mturn_acg,
+                         double mturn_mcg, ScalingConstants *sc);
 double Fcoll_General(double z, double lnM_min, double lnM_max);
 double Nhalo_General(double z, double lnM_min, double lnM_max);
 
@@ -40,8 +42,11 @@ double Nion_ConditionalM_MINI(double growthf, double lnM1, double lnM2, double l
 double Nion_ConditionalM(double growthf, double lnM1, double lnM2, double lnM_cond, double sigma2,
                          double delta2, double mturn_acg, ScalingConstants *sc, int method);
 double Xray_ConditionalM(double redshift, double growthf, double lnM1, double lnM2, double lnM_cond,
-                         double sigma2, double delta2, double mturn_acg, double mturn_mcg,
-                         ScalingConstants *sc, int method);
+                         double sigma2, double delta2, double mturn_acg, ScalingConstants *sc,
+                         int method);
+double Xray_ConditionalM_MINI(double redshift, double growthf, double lnM1, double lnM2,
+                              double lnM_cond, double sigma2, double delta2, double mturn_acg,
+                              double mturn_mcg, ScalingConstants *sc, int method);
 
 double unconditional_hmf(double growthf, double lnM, double z, int HMF);
 double conditional_hmf(double growthf, double lnM, double delta_cond, double sigma_cond, int HMF);

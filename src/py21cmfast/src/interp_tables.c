@@ -565,9 +565,6 @@ void initialise_SFRD_Conditional_table(double z, double min_density, double max_
     }
 }
 
-// The main difference between this function and the above function for the initialization of the
-// SFRD conditional table is that here we only initialize one 2D interpolation table when
-// USE_MINI_HALOS = True, as this table contains contributions from both ACGs and MCGs
 void initialise_Xray_Conditional_table(double redshift, double min_density, double max_density,
                                        double Mmin, double Mmax, double Mcond,
                                        ScalingConstants *sc) {
@@ -588,33 +585,32 @@ void initialise_Xray_Conditional_table(double redshift, double min_density, doub
     // The ACG table could become 2D (delta,mturn) if we apply the inhomogeneous reionization
     // feedback on the ACG turnover mass, otherwise it is 1D (delta) while mturn is set
     // deterministically by the redshift
-    if (!astro_options_global->USE_MINI_HALOS) {
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
-            if (!Xray_conditional_table_2D.allocated) {
-                allocate_RGTable2D_f(NDELTA, NMTURN, &Xray_conditional_table_2D);
-            }
-            Xray_conditional_table_2D.x_min = min_density;
-            Xray_conditional_table_2D.x_width = (max_density - min_density) / (NDELTA - 1.);
-            Xray_conditional_table_2D.y_min = LOG10_MTURN_ACG_MIN;
-            Xray_conditional_table_2D.y_width =
-                (LOG10_MTURN_ACG_MAX - LOG10_MTURN_ACG_MIN) / (NMTURN - 1.);
-
-            for (i = 0; i < NMTURN; i++) {
-                mturns_acg[i] =
-                    pow(10., LOG10_MTURN_ACG_MIN + (float)i / ((float)NMTURN - 1.) *
-                                                       (LOG10_MTURN_ACG_MAX - LOG10_MTURN_ACG_MIN));
-            }
-        } else {
-            if (!Xray_conditional_table_1D.allocated) {
-                allocate_RGTable1D_f(NDELTA, &Xray_conditional_table_1D);
-            }
-            Xray_conditional_table_1D.x_min = min_density;
-            Xray_conditional_table_1D.x_width = (max_density - min_density) / (NDELTA - 1.);
+    if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        if (!Xray_conditional_table_2D.allocated) {
+            allocate_RGTable2D_f(NDELTA, NMTURN, &Xray_conditional_table_2D);
         }
+        Xray_conditional_table_2D.x_min = min_density;
+        Xray_conditional_table_2D.x_width = (max_density - min_density) / (NDELTA - 1.);
+        Xray_conditional_table_2D.y_min = LOG10_MTURN_ACG_MIN;
+        Xray_conditional_table_2D.y_width =
+            (LOG10_MTURN_ACG_MAX - LOG10_MTURN_ACG_MIN) / (NMTURN - 1.);
+
+        for (i = 0; i < NMTURN; i++) {
+            mturns_acg[i] =
+                pow(10., LOG10_MTURN_ACG_MIN + (float)i / ((float)NMTURN - 1.) *
+                                                   (LOG10_MTURN_ACG_MAX - LOG10_MTURN_ACG_MIN));
+        }
+    } else {
+        if (!Xray_conditional_table_1D.allocated) {
+            allocate_RGTable1D_f(NDELTA, &Xray_conditional_table_1D);
+        }
+        Xray_conditional_table_1D.x_min = min_density;
+        Xray_conditional_table_1D.x_width = (max_density - min_density) / (NDELTA - 1.);
     }
+
     // The MCG table is always 2D (delta,mturn) even without reionization feedback,
     // because of the inhomogeneous LW and v_cb feedbacks
-    else {
+    if (astro_options_global->USE_MINI_HALOS) {
         if (!Xray_conditional_table_MINI.allocated) {
             allocate_RGTable2D_f(NDELTA, NMTURN, &Xray_conditional_table_MINI);
         }
@@ -640,47 +636,47 @@ void initialise_Xray_Conditional_table(double redshift, double min_density, doub
     {
 #pragma omp for
         for (i = 0; i < NDELTA; i++) {
-            if (!astro_options_global->USE_MINI_HALOS) {
-                if (uses_reionization_feedback_in_acgs(
-                        astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
-                    for (j = 0; j < NMTURN; j++) {
-                        Xray_conditional_table_2D.z_arr[i][j] =
-                            log(Xray_ConditionalM(redshift, growthf, lnMmin, lnMmax, lnM_condition,
-                                                  sigma2, overdense_table[i], mturns_acg[j], 0., sc,
-                                                  astro_options_global->INTEGRATION_METHOD_ATOMIC));
+            if (uses_reionization_feedback_in_acgs(
+                    astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+                for (j = 0; j < NMTURN; j++) {
+                    Xray_conditional_table_2D.z_arr[i][j] =
+                        log(Xray_ConditionalM(redshift, growthf, lnMmin, lnMmax, lnM_condition,
+                                              sigma2, overdense_table[i], mturns_acg[j], sc,
+                                              astro_options_global->INTEGRATION_METHOD_ATOMIC));
 
-                        if (Xray_conditional_table_2D.z_arr[i][j] < -50.)
-                            Xray_conditional_table_2D.z_arr[i][j] = -50.;
-                        if (isfinite(Xray_conditional_table_2D.z_arr[i][j]) == 0) {
-                            LOG_ERROR(
-                                "Detected either an infinite or NaN value in "
-                                "Xray_conditional_table_2D");
-                            Throw(TableGenerationError);
-                        }
-                    }
-                } else {
-                    // use homogeneous (feedback-free) ACG turnover mass
-                    Xray_conditional_table_1D.y_arr[i] = log(
-                        Xray_ConditionalM(redshift, growthf, lnMmin, lnMmax, lnM_condition, sigma2,
-                                          overdense_table[i], sc->mturn_acg_homogeneous, 0., sc,
-                                          astro_options_global->INTEGRATION_METHOD_ATOMIC));
-
-                    if (Xray_conditional_table_1D.y_arr[i] < -50.)
-                        Xray_conditional_table_1D.y_arr[i] = -50.;
-                    if (isfinite(Xray_conditional_table_1D.y_arr[i]) == 0) {
+                    if (Xray_conditional_table_2D.z_arr[i][j] < -50.)
+                        Xray_conditional_table_2D.z_arr[i][j] = -50.;
+                    if (isfinite(Xray_conditional_table_2D.z_arr[i][j]) == 0) {
                         LOG_ERROR(
                             "Detected either an infinite or NaN value in "
-                            "Xray_conditional_table_1D");
+                            "Xray_conditional_table_2D");
                         Throw(TableGenerationError);
                     }
                 }
             } else {
+                // use homogeneous (feedback-free) ACG turnover mass
+                Xray_conditional_table_1D.y_arr[i] =
+                    log(Xray_ConditionalM(redshift, growthf, lnMmin, lnMmax, lnM_condition, sigma2,
+                                          overdense_table[i], sc->mturn_acg_homogeneous, sc,
+                                          astro_options_global->INTEGRATION_METHOD_ATOMIC));
+
+                if (Xray_conditional_table_1D.y_arr[i] < -50.)
+                    Xray_conditional_table_1D.y_arr[i] = -50.;
+                if (isfinite(Xray_conditional_table_1D.y_arr[i]) == 0) {
+                    LOG_ERROR(
+                        "Detected either an infinite or NaN value in "
+                        "Xray_conditional_table_1D");
+                    Throw(TableGenerationError);
+                }
+            }
+
+            if (astro_options_global->USE_MINI_HALOS) {
                 for (j = 0; j < NMTURN; j++) {
                     // NOTE: we use below homogeneous (feedback-free) ACG turnover mass, because if
                     // the reionization feedback dominates,  then the ACG turnover mass is higher
                     // than the atomic cooling threshold, in which case the MCG contribution is
-                    // negligible (see comment in xray_fraction_doublePL in hmf.c)
-                    Xray_conditional_table_MINI.z_arr[i][j] = log(Xray_ConditionalM(
+                    // negligible (see comment in EvaluateXray_Conditional_MINI)
+                    Xray_conditional_table_MINI.z_arr[i][j] = log(Xray_ConditionalM_MINI(
                         redshift, growthf, lnMmin, lnMmax, lnM_condition, sigma2,
                         overdense_table[i], sc->mturn_acg_homogeneous, mturns_mcg[j], sc,
                         astro_options_global->INTEGRATION_METHOD_MINI));
@@ -1185,26 +1181,38 @@ double EvaluateNion_Conditional_MINI(double delta, double log10Mturn_acg, double
                                   astro_options_global->INTEGRATION_METHOD_MINI);
 }
 
-// Note that unlike Nion and SFRD conditional functions, this function accounts for contributions
-// from both ACGs and MCGs
-double EvaluateXray_Conditional(double delta, double log10Mturn_acg, double log10Mturn_mcg,
-                                double redshift, double growthf, double M_min, double M_max,
-                                double M_cond, double sigma_max, ScalingConstants *sc) {
+double EvaluateXray_Conditional(double delta, double log10Mturn_acg, double redshift,
+                                double growthf, double M_min, double M_max, double M_cond,
+                                double sigma_max, ScalingConstants *sc) {
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
-        if (astro_options_global->USE_MINI_HALOS) {
-            return exp(EvaluateRGTable2D_f(delta, log10Mturn_mcg, &Xray_conditional_table_MINI));
-        } else if (uses_reionization_feedback_in_acgs(
-                       astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL))
             return exp(EvaluateRGTable2D_f(delta, log10Mturn_acg, &Xray_conditional_table_2D));
-        } else {
-            return exp(EvaluateRGTable1D_f(delta, &Xray_conditional_table_1D));
-        }
+        return exp(EvaluateRGTable1D_f(delta, &Xray_conditional_table_1D));
     }
 
     // TODO: I shouldn't need to pass both redshift and growthf here
     return Xray_ConditionalM(redshift, growthf, log(M_min), log(M_max), log(M_cond), sigma_max,
-                             delta, pow(10, log10Mturn_acg), pow(10, log10Mturn_mcg), sc,
-                             astro_options_global->INTEGRATION_METHOD_MINI);
+                             delta, pow(10, log10Mturn_acg), sc,
+                             astro_options_global->INTEGRATION_METHOD_ATOMIC);
+}
+
+double EvaluateXray_Conditional_MINI(double delta, double log10Mturn_acg, double log10Mturn_mcg,
+                                     double redshift, double growthf, double M_min, double M_max,
+                                     double M_cond, double sigma_max, ScalingConstants *sc) {
+    // MCGs cannot form if the ACG turnover mass is above the atomic cooling threshold
+    // (the multiplication by 1.001 is to avoid floating point issues)
+    if (pow(10., log10Mturn_acg) > sc->atomic_cooling_threshold * 1.001) {
+        return 0.;
+    }
+
+    if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
+        return exp(EvaluateRGTable2D_f(delta, log10Mturn_mcg, &Xray_conditional_table_MINI));
+    }
+
+    // TODO: I shouldn't need to pass both redshift and growthf here
+    return Xray_ConditionalM_MINI(redshift, growthf, log(M_min), log(M_max), log(M_cond), sigma_max,
+                                  delta, pow(10, log10Mturn_acg), pow(10, log10Mturn_mcg), sc,
+                                  astro_options_global->INTEGRATION_METHOD_MINI);
 }
 
 double EvaluateFcoll_delta(double delta, double growthf, double sigma_min, double sigma_max) {
