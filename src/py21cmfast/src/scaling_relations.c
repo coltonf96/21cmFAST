@@ -26,7 +26,8 @@ void print_sc_consts(ScalingConstants *c) {
     LOG_DEBUG("FESC: f10 %.2e a %.2e f7 %.2e", c->fesc_10, c->alpha_esc, c->fesc_7);
     LOG_DEBUG("SSFR: t* %.2e th %.8e sigma %.2e idx %.2e", c->t_star, c->t_h, c->sigma_sfr_lim,
               c->sigma_sfr_idx);
-    LOG_DEBUG("Turnovers (nofb) ACG %.2e", c->mturn_acg_homogeneous);
+    LOG_DEBUG("Turnovers ACG homogeneous %.2e atomic cooling threshold %.2e",
+              c->mturn_acg_homogeneous, c->atomic_cooling_threshold);
     LOG_DEBUG("Limits (ACG,MCG) F* (%.2e %.2e) Fesc (%.2e %.2e)", c->Mlim_Fstar, c->Mlim_Fstar_mini,
               c->Mlim_Fesc, c->Mlim_Fesc_mini);
     return;
@@ -77,8 +78,9 @@ void set_scaling_constants(double redshift, ScalingConstants *consts, bool use_p
     consts->pop2_ion = astro_params_global->POP2_ION;
     consts->pop3_ion = astro_params_global->POP3_ION;
 
+    consts->atomic_cooling_threshold = atomic_cooling_threshold(redshift);
     consts->mturn_acg_homogeneous =
-        fmax(atomic_cooling_threshold(redshift), astro_params_global->M_TURN_STELLAR_FEEDBACK);
+        fmax(consts->atomic_cooling_threshold, astro_params_global->M_TURN_STELLAR_FEEDBACK);
 
     switch (matter_options_global->V_CB_MODEL) {
         case V_CB_MODEL_NO:
@@ -146,8 +148,9 @@ ScalingConstants evolve_scaling_constants_to_redshift(double redshift, ScalingCo
         }
     }
 
+    sc_z.atomic_cooling_threshold = atomic_cooling_threshold(redshift);
     sc_z.mturn_acg_homogeneous =
-        fmax(atomic_cooling_threshold(redshift), astro_params_global->M_TURN_STELLAR_FEEDBACK);
+        fmax(sc_z.atomic_cooling_threshold, astro_params_global->M_TURN_STELLAR_FEEDBACK);
 
     return sc_z;
 }
@@ -368,16 +371,16 @@ void get_halo_stellarmass(double halo_mass, double mturn_acg, double mturn_mcg, 
         return;
     }
 
-    // No MCGs can form if their turnover mass is above the ACG turnover mass,
-    // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
-    // is the dominant effect)
-    if (mturn_mcg >= mturn_acg) {
+    // MCGs cannot form if the ACG turnover mass is above the atomic cooling threshold
+    // (the multiplication by 1.001 is to avoid floating point issues)
+    if (mturn_acg > consts->atomic_cooling_threshold * 1.001) {
         f_sample_mini = 0.;
     } else {
         // See comments above for how f_sample_mini is distributed
         mu_fstar_mini = f_7 * scaling_single_PL(halo_mass, f_a_mini, 1e7);
-        f_sample_mini = mu_fstar_mini * exp(-mturn_mcg / halo_mass - halo_mass / mturn_acg +
-                                            star_rng * sigma_star - stoc_adjustment_term);
+        f_sample_mini = mu_fstar_mini *
+                        exp(-mturn_mcg / halo_mass - halo_mass / consts->atomic_cooling_threshold +
+                            star_rng * sigma_star - stoc_adjustment_term);
     }
     if (f_sample_mini > 1.) f_sample_mini = 1.;
 

@@ -488,7 +488,9 @@ double xray_fraction_doublePL(double lnM, void *param_struct) {
 
     // using the escape fraction variables for minihalos
     double Fstar_mini = 0.;
-    if (astro_options_global->USE_MINI_HALOS)
+    // MCGs cannot form if the ACG turnover mass is above the atomic cooling threshold
+    // (the multiplication by 1.001 is to avoid floating point issues)
+    if (p.Mturn_upper * 1.001 >= p.Mturn_acg && astro_options_global->USE_MINI_HALOS)
         Fstar_mini =
             exp(log_scaling_PL_limit(lnM, p.f_esc_norm, p.alpha_esc, 7 * M_LN10, p.Mlim_esc) -
                 p.Mturn_mcg / M - M / p.Mturn_upper + p.f_esc_norm);
@@ -972,10 +974,9 @@ double Nion_General(double z, double lnM_Min, double lnM_Max, double mturn_acg,
 
 double Nion_General_MINI(double z, double lnM_Min, double lnM_Max, double mturn_acg,
                          double mturn_mcg, ScalingConstants *sc) {
-    // No MCGs can form if their turnover mass is above the ACG turnover mass,
-    // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
-    // is the dominant effect)
-    if (mturn_mcg >= mturn_acg) {
+    // MCGs cannot form if the ACG turnover mass is above the atomic cooling threshold
+    // (the multiplication by 1.001 is to avoid floating point issues)
+    if (mturn_acg > sc->atomic_cooling_threshold * 1.001) {
         return 0.;
     }
 
@@ -983,7 +984,7 @@ double Nion_General_MINI(double z, double lnM_Min, double lnM_Max, double mturn_
         .redshift = z,
         .growthf = dicke(z),
         .Mturn_mcg = mturn_mcg,
-        .Mturn_upper = mturn_acg,
+        .Mturn_upper = sc->atomic_cooling_threshold,
         .alpha_star = sc->alpha_star_mini,
         .alpha_esc = sc->alpha_esc,
         .f_star_norm = log(sc->fstar_7),
@@ -998,13 +999,6 @@ double Nion_General_MINI(double z, double lnM_Min, double lnM_Max, double mturn_
 
 double Xray_General(double z, double lnM_Min, double lnM_Max, double mturn_acg, double mturn_mcg,
                     ScalingConstants *sc) {
-    // No MCGs can form if their turnover mass is above the ACG turnover mass,
-    // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
-    // is the dominant effect)
-    if (mturn_mcg >= mturn_acg) {
-        return 0.;
-    }
-
     // NOTE:in the _General functions, we don't use the scaling relation constants
     //  that are z-dependent so we can evaluate them at multiple redshifts without redoing the
     //  constants
@@ -1013,7 +1007,7 @@ double Xray_General(double z, double lnM_Min, double lnM_Max, double mturn_acg, 
         .growthf = dicke(z),
         .Mturn_acg = mturn_acg,
         .Mturn_mcg = mturn_mcg,
-        .Mturn_upper = mturn_acg,
+        .Mturn_upper = sc->atomic_cooling_threshold,
         .alpha_star = sc->alpha_star,
         .alpha_esc = sc->alpha_star_mini,  // re-using f_esc for minihalos
         .f_star_norm = log(sc->fstar_10),
@@ -1080,17 +1074,16 @@ double Mcoll_Conditional(double growthf, double lnM1, double lnM2, double lnM_co
 double Nion_ConditionalM_MINI(double growthf, double lnM1, double lnM2, double lnM_cond,
                               double sigma2, double delta2, double mturn_acg, double mturn_mcg,
                               ScalingConstants *sc, int method) {
-    // No MCGs can form if their turnover mass is above the ACG turnover mass,
-    // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
-    // is the dominant effect)
-    if (mturn_mcg >= mturn_acg) {
+    // MCGs cannot form if the ACG turnover mass is above the atomic cooling threshold
+    // (the multiplication by 1.001 is to avoid floating point issues)
+    if (mturn_acg > sc->atomic_cooling_threshold * 1.001) {
         return 0.;
     }
 
     struct parameters_gsl_MF_integrals params = {
         .growthf = growthf,
         .Mturn_mcg = mturn_mcg,
-        .Mturn_upper = mturn_acg,
+        .Mturn_upper = sc->atomic_cooling_threshold,
         .alpha_star = sc->alpha_star_mini,
         .alpha_esc = sc->alpha_esc,
         .f_star_norm = log(sc->fstar_7),
@@ -1163,20 +1156,13 @@ double Nion_ConditionalM(double growthf, double lnM1, double lnM2, double lnM_co
 double Xray_ConditionalM(double redshift, double growthf, double lnM1, double lnM2, double lnM_cond,
                          double sigma2, double delta2, double mturn_acg, double mturn_mcg,
                          ScalingConstants *sc, int method) {
-    // No MCGs can form if their turnover mass is above the ACG turnover mass,
-    // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
-    // is the dominant effect)
-    if (mturn_mcg >= mturn_acg) {
-        return 0.;
-    }
-
     // re-using escape fraction for minihalo parameters
     struct parameters_gsl_MF_integrals params = {
         .redshift = redshift,
         .growthf = growthf,
         .Mturn_acg = mturn_acg,
         .Mturn_mcg = mturn_mcg,
-        .Mturn_upper = mturn_acg,
+        .Mturn_upper = sc->atomic_cooling_threshold,
         .alpha_star = sc->alpha_star,
         .alpha_esc = sc->alpha_star_mini,  // re-using f_esc for minihalos
         .f_star_norm = log(sc->fstar_10),

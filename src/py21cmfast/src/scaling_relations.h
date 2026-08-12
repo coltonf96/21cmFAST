@@ -41,6 +41,7 @@ typedef struct ScalingConstants {
     double pop3_ion;
 
     double vcb_const;
+    double atomic_cooling_threshold;
     double mturn_acg_homogeneous;
 
     double Mlim_Fstar;

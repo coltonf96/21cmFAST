@@ -153,8 +153,8 @@ void initialise_SFRD_spline(int Nbin, float zmin, float zmax, ScalingConstants *
                 Throw(TableGenerationError);
             }
             // NOTE: we use below homogeneous (feedback-free) ACG turnover mass, because if the
-            // reionization feedback dominates, then the the turnover masses for ACG and MCG are the
-            // same, in which case the MCG contribution is negligible (see comment in
+            // reionization feedback dominates, then the ACG turnover mass is higher than the atomic
+            // cooling threshold, in which case the MCG contribution is negligible (see comment in
             // EvaluateSFRD_MINI)
             if (astro_options_global->USE_MINI_HALOS) {
                 for (j = 0; j < NMTURN; j++) {
@@ -224,8 +224,8 @@ void initialise_Nion_Ts_spline(int Nbin, float zmin, float zmax, ScalingConstant
                 Throw(TableGenerationError);
             }
             // NOTE: we use below homogeneous (feedback-free) ACG turnover mass, because if the
-            // reionization feedback dominates, then the the turnover masses for ACG and MCG are the
-            // same, in which case the MCG contribution is negligible (see comment in
+            // reionization feedback dominates, then the ACG turnover mass is higher than the atomic
+            // cooling threshold, in which case the MCG contribution is negligible (see comment in
             // EvaluateNionTs_MINI)
             if (astro_options_global->USE_MINI_HALOS) {
                 for (j = 0; j < NMTURN; j++) {
@@ -415,8 +415,8 @@ void initialise_Nion_Conditional_spline(double z, double min_density, double max
             if (astro_options_global->USE_MINI_HALOS) {
                 for (j = 0; j < NMTURN; j++) {
                     // NOTE: we use below homogeneous (feedback-free) ACG turnover mass, because if
-                    // the reionization feedback dominates, then the the turnover
-                    // masses for ACG and MCG are the same, in which case the MCG contribution is
+                    // the reionization feedback dominates, then the ACG turnover mass is higher
+                    // than the atomic cooling threshold, in which case the MCG contribution is
                     // negligible (see comment in EvaluateNion_Conditional_MINI)
                     table_mcg_2d->z_arr[i][j] = log(Nion_ConditionalM_MINI(
                         growthf, lnMmin, lnMmax, lnM_condition, sigma2, overdense_table[i],
@@ -543,8 +543,8 @@ void initialise_SFRD_Conditional_table(double z, double min_density, double max_
             if (astro_options_global->USE_MINI_HALOS) {
                 for (j = 0; j < NMTURN; j++) {
                     // NOTE: we use below homogeneous (feedback-free) ACG turnover mass, because if
-                    // the reionization feedback dominates, then the the turnover
-                    // masses for ACG and MCG are the same, in which case the MCG contribution is
+                    // the reionization feedback dominates, then the ACG turnover mass is higher
+                    // than the atomic cooling threshold, in which case the MCG contribution is
                     // negligible (see comment in EvaluateSFRD_Conditional_MINI)
                     SFRD_conditional_table_MINI.z_arr[i][j] = log(Nion_ConditionalM_MINI(
                         growthf, lnMmin, lnMmax, lnM_condition, sigma2, overdense_table[i],
@@ -677,9 +677,9 @@ void initialise_Xray_Conditional_table(double redshift, double min_density, doub
             } else {
                 for (j = 0; j < NMTURN; j++) {
                     // NOTE: we use below homogeneous (feedback-free) ACG turnover mass, because if
-                    // the reionization feedback dominates, then the the turnover
-                    // masses for ACG and MCG are the same, in which case the MCG contribution is
-                    // negligible (see comment in EvaluateXray_Conditional)
+                    // the reionization feedback dominates,  then the ACG turnover mass is higher
+                    // than the atomic cooling threshold, in which case the MCG contribution is
+                    // negligible (see comment in xray_fraction_doublePL in hmf.c)
                     Xray_conditional_table_MINI.z_arr[i][j] = log(Xray_ConditionalM(
                         redshift, growthf, lnMmin, lnMmax, lnM_condition, sigma2,
                         overdense_table[i], sc->mturn_acg_homogeneous, mturns_mcg[j], sc,
@@ -1043,10 +1043,9 @@ double EvaluateNionTs(double redshift, double log10_Mturn_ACG_ave, ScalingConsta
 
 double EvaluateNionTs_MINI(double redshift, double log10_Mturn_ACG_ave, double log10_Mturn_MCG_ave,
                            ScalingConstants *sc) {
-    // No MCGs can form if their turnover mass is above the ACG turnover mass,
-    // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
-    // is the dominant effect)
-    if (log10_Mturn_MCG_ave >= log10_Mturn_ACG_ave) {
+    // MCGs cannot form if the ACG turnover mass is above the atomic cooling threshold
+    // (the multiplication by 1.001 is to avoid floating point issues)
+    if (pow(10., log10_Mturn_ACG_ave) > sc->atomic_cooling_threshold * 1.001) {
         return 0.;
     }
 
@@ -1096,10 +1095,9 @@ double EvaluateSFRD(double redshift, double log10_Mturn_ACG_ave, ScalingConstant
 
 double EvaluateSFRD_MINI(double redshift, double log10_Mturn_ACG_ave, double log10_Mturn_MCG_ave,
                          ScalingConstants *sc) {
-    // No MCGs can form if their turnover mass is above the ACG turnover mass,
-    // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
-    // is the dominant effect)
-    if (log10_Mturn_MCG_ave >= log10_Mturn_ACG_ave) {
+    // MCGs cannot form if the ACG turnover mass is above the atomic cooling threshold
+    // (the multiplication by 1.001 is to avoid floating point issues)
+    if (pow(10., log10_Mturn_ACG_ave) > sc->atomic_cooling_threshold * 1.001) {
         return 0.;
     }
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
@@ -1137,10 +1135,9 @@ double EvaluateSFRD_Conditional(double delta, double log10Mturn_acg, double grow
 double EvaluateSFRD_Conditional_MINI(double delta, double log10Mturn_acg, double log10Mturn_mcg,
                                      double growthf, double M_min, double M_max, double M_cond,
                                      double sigma_max, ScalingConstants *sc) {
-    // No MCGs can form if their turnover mass is above the ACG turnover mass,
-    // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
-    // is the dominant effect)
-    if (log10Mturn_mcg >= log10Mturn_acg) {
+    // MCGs cannot form if the ACG turnover mass is above the atomic cooling threshold
+    // (the multiplication by 1.001 is to avoid floating point issues)
+    if (pow(10., log10Mturn_acg) > sc->atomic_cooling_threshold * 1.001) {
         return 0.;
     }
 
@@ -1172,10 +1169,9 @@ double EvaluateNion_Conditional(double delta, double log10Mturn_acg, double grow
 double EvaluateNion_Conditional_MINI(double delta, double log10Mturn_acg, double log10Mturn_mcg,
                                      double growthf, double M_min, double M_max, double M_cond,
                                      double sigma_max, ScalingConstants *sc, bool prev) {
-    // No MCGs can form if their turnover mass is above the ACG turnover mass,
-    // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
-    // is the dominant effect)
-    if (log10Mturn_mcg >= log10Mturn_acg) {
+    // MCGs cannot form if the ACG turnover mass is above the atomic cooling threshold
+    // (the multiplication by 1.001 is to avoid floating point issues)
+    if (pow(10., log10Mturn_acg) > sc->atomic_cooling_threshold * 1.001) {
         return 0.;
     }
 
@@ -1194,12 +1190,6 @@ double EvaluateNion_Conditional_MINI(double delta, double log10Mturn_acg, double
 double EvaluateXray_Conditional(double delta, double log10Mturn_acg, double log10Mturn_mcg,
                                 double redshift, double growthf, double M_min, double M_max,
                                 double M_cond, double sigma_max, ScalingConstants *sc) {
-    // No MCGs can form if their turnover mass is above the ACG turnover mass,
-    // or if the ACG and MCG turnover masses are the same (can happen if the reionization feedback
-    // is the dominant effect)
-    if (log10Mturn_mcg >= log10Mturn_acg && astro_options_global->USE_MINI_HALOS) {
-        return 0.;
-    }
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
         if (astro_options_global->USE_MINI_HALOS) {
             return exp(EvaluateRGTable2D_f(delta, log10Mturn_mcg, &Xray_conditional_table_MINI));
