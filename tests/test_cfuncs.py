@@ -791,6 +791,7 @@ def test_roundtrip_mturns(default_input_struct_ts, v_cb_model):
         RECOMB_MODEL="inhomogeneous",
         K_MAX_FOR_CLASS=1.0,
         V_CB_MODEL=v_cb_model,
+        M_TURN_STELLAR_FEEDBACK=5.0,
         POWER_SPECTRUM="CLASS" if v_cb_model == "FLUCTS" else "EH",
     )
     # Run global evolution and extract global fields
