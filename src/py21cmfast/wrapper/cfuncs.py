@@ -1366,10 +1366,14 @@ def _get_log10mturns_helper(
         The log10 turnover masses for MCGs at the given redshifts. Will be None if `component` is "acg".
     """
     # We need to set from where we take the global turnover masses only if they cannot be determined deterministically (i.e. not from a simulation)
-    if component in [
-        "mcg",
-        "both",
-    ] or inputs.astro_options.REIONIZATION_FEEDBACK_MODEL in ["ACG", "BOTH"]:
+    if (
+        component
+        in [
+            "mcg",
+            "both",
+        ]
+        or inputs.astro_options.USE_REIONIZATION_PHOTOHEATING_FEEDBACK
+    ):
         if lightcone is not None:
             global_quantities = lightcone.global_quantities
         else:
@@ -1381,7 +1385,7 @@ def _get_log10mturns_helper(
     if component in ("both", "acg"):
         # The ACG turnover mass can be set deterministically if reionization feedback is not applied,
         # no need to take if from lightcone or global evolution in this case
-        if inputs.astro_options.REIONIZATION_FEEDBACK_MODEL in ["NONE", "MCG"]:
+        if not inputs.astro_options.USE_REIONIZATION_PHOTOHEATING_FEEDBACK:
             M_turn_acg = get_atomic_cooling_mass_threshold(
                 inputs=inputs, redshifts=redshifts
             )

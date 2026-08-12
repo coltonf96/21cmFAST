@@ -36,7 +36,7 @@ def default_input_struct_lc_mini(default_input_struct_lc):
         USE_TS_FLUCT=True,
         K_MAX_FOR_CLASS=1.0,
         M_TURN_STELLAR_FEEDBACK=5.0,
-        REIONIZATION_FEEDBACK_MODEL="BOTH",
+        USE_REIONIZATION_PHOTOHEATING_FEEDBACK=True,
     )
 
 
@@ -696,13 +696,13 @@ def test_removed_arguments_are_cleaned_up_in_v5():
 
 
 @pytest.mark.parametrize("use_mini_halos", [True, False])
-@pytest.mark.parametrize("reionization_feedback_model", ["NONE", "ACG", "MCG", "BOTH"])
+@pytest.mark.parametrize("use_reionization_photoheating_feedback", [True, False])
 @pytest.mark.parametrize("log10_m_turn_stellar_feedback", [5.0, 6.0, 7.0, 8.0, 9.0])
 def test_compute_mturns_model(
     default_input_struct_ts,
     use_mini_halos,
     log10_m_turn_stellar_feedback,
-    reionization_feedback_model,
+    use_reionization_photoheating_feedback,
 ):
     """
     Test that the the turnover masses follow our model.
@@ -714,7 +714,7 @@ def test_compute_mturns_model(
 
     If we make a change in the turnover mass model in the C code, this test should fail and we should update it to reflect the new model.
     """
-    if not use_mini_halos and reionization_feedback_model in ["MCG", "BOTH"]:
+    if not use_mini_halos and use_reionization_photoheating_feedback:
         pytest.skip(
             "NO POINT IN TESTING REIONIZATION FEEDBACK ON MCG TURNOVER MASS WITHOUT MCGS"
         )
@@ -734,7 +734,7 @@ def test_compute_mturns_model(
         RECOMB_MODEL="inhomogeneous",
         M_TURN_STELLAR_FEEDBACK=log10_m_turn_stellar_feedback,
         USE_MINI_HALOS=use_mini_halos,
-        REIONIZATION_FEEDBACK_MODEL=reionization_feedback_model,
+        USE_REIONIZATION_PHOTOHEATING_FEEDBACK=use_reionization_photoheating_feedback,
     )
     # Compute the turnover masses from the C code, these are the values under test
     # NOTE: to save time, the C code actually computes the inhomogeneous turnover masses at every cell,
@@ -760,7 +760,7 @@ def test_compute_mturns_model(
         v_cb=v_cb,
     )
     # Compute the reionization feedback turnover mass, if applicable
-    if reionization_feedback_model != "NONE":
+    if use_reionization_photoheating_feedback:
         M_turn_r = cf.get_reionization_feedback_mass(
             inputs=inputs,
             redshifts=redshifts,
@@ -770,11 +770,11 @@ def test_compute_mturns_model(
 
     # Determine the final turnover masses by taking the maximum of three mass scales
     M_turn_acg = np.maximum(M_turn_acg, pow(10.0, log10_m_turn_stellar_feedback))
-    if reionization_feedback_model in ["ACG", "BOTH"]:
+    if use_reionization_photoheating_feedback:
         M_turn_acg = np.maximum(M_turn_acg, M_turn_r)
     if use_mini_halos:
         M_turn_mcg = np.maximum(M_turn_mcg, pow(10.0, log10_m_turn_stellar_feedback))
-        if reionization_feedback_model in ["MCG", "BOTH"]:
+        if use_reionization_photoheating_feedback:
             M_turn_mcg = np.maximum(M_turn_mcg, M_turn_r)
 
     # Compare the results

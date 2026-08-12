@@ -527,13 +527,13 @@ def test_Nion_z_tables(name, z_range, default_global_evolution_mini, plt):
 @pytest.mark.parametrize("R", R_PARAM_LIST)
 @pytest.mark.parametrize("name", options_hmf)
 @pytest.mark.parametrize("intmethod", options_intmethod)
-@pytest.mark.parametrize("reionization_feedback_model", ["NONE", "ACG", "MCG", "BOTH"])
+@pytest.mark.parametrize("use_reionization_photoheating_feedback", [True, False])
 def test_Nion_conditional_tables(
     name,
     delta_range,
     R,
     mini,
-    reionization_feedback_model,
+    use_reionization_photoheating_feedback,
     intmethod,
     default_global_evolution_mini,
     plt,
@@ -548,11 +548,6 @@ def test_Nion_conditional_tables(
 
     mini_flag = mini == "mini"
 
-    if not mini_flag and reionization_feedback_model in ["MCG", "BOTH"]:
-        pytest.skip(
-            "NO POINT IN TESTING REIONIZATION FEEDBACK ON MCG TURNOVER MASS WITHOUT MCGS"
-        )
-
     redshift, kwargs = OPTIONS_HMF[name]
     global_evolution = default_global_evolution_mini
     inputs = get_all_options_struct(
@@ -562,7 +557,7 @@ def test_Nion_conditional_tables(
         USE_TS_FLUCT=True,
         ZPRIME_STEP_FACTOR=1.2,  # needed because we need inputs.node_redshifts == global_evolution.node_redshifts
         M_TURN_STELLAR_FEEDBACK=5.0,
-        REIONIZATION_FEEDBACK_MODEL=reionization_feedback_model,
+        USE_REIONIZATION_PHOTOHEATING_FEEDBACK=use_reionization_photoheating_feedback,
         INTEGRATION_METHOD_ATOMIC=OPTIONS_INTMETHOD[intmethod],
         INTEGRATION_METHOD_MINI=OPTIONS_INTMETHOD[intmethod],
         node_redshifts=global_evolution.node_redshifts,
@@ -664,13 +659,13 @@ def test_Nion_conditional_tables(
 @pytest.mark.parametrize("R", R_PARAM_LIST)
 @pytest.mark.parametrize("name", options_hmf)
 @pytest.mark.parametrize("intmethod", options_intmethod)
-@pytest.mark.parametrize("reionization_feedback_model", ["NONE", "ACG", "MCG", "BOTH"])
+@pytest.mark.parametrize("use_reionization_photoheating_feedback", [True, False])
 def test_Xray_conditional_tables(
     name,
     delta_range,
     R,
     mini,
-    reionization_feedback_model,
+    use_reionization_photoheating_feedback,
     intmethod,
     default_global_evolution_mini,
     plt,
@@ -685,11 +680,6 @@ def test_Xray_conditional_tables(
 
     mini_flag = mini == "mini"
 
-    if not mini_flag and reionization_feedback_model in ["MCG", "BOTH"]:
-        pytest.skip(
-            "NO POINT IN TESTING REIONIZATION FEEDBACK ON MCG TURNOVER MASS WITHOUT MCGS"
-        )
-
     redshift, kwargs = OPTIONS_HMF[name]
     global_evolution = default_global_evolution_mini
     inputs = get_all_options_struct(
@@ -699,7 +689,7 @@ def test_Xray_conditional_tables(
         USE_TS_FLUCT=True,
         ZPRIME_STEP_FACTOR=1.2,  # needed because we need inputs.node_redshifts == global_evolution.node_redshifts
         M_TURN_STELLAR_FEEDBACK=5.0,
-        REIONIZATION_FEEDBACK_MODEL=reionization_feedback_model,
+        USE_REIONIZATION_PHOTOHEATING_FEEDBACK=use_reionization_photoheating_feedback,
         INTEGRATION_METHOD_ATOMIC=OPTIONS_INTMETHOD[intmethod],
         INTEGRATION_METHOD_MINI=OPTIONS_INTMETHOD[intmethod],
         node_redshifts=global_evolution.node_redshifts,
@@ -764,13 +754,13 @@ def test_Xray_conditional_tables(
 @pytest.mark.parametrize("R", R_PARAM_LIST)
 @pytest.mark.parametrize("name", options_hmf)
 @pytest.mark.parametrize("intmethod", options_intmethod)
-@pytest.mark.parametrize("reionization_feedback_model", ["NONE", "ACG", "MCG", "BOTH"])
+@pytest.mark.parametrize("use_reionization_photoheating_feedback", [True, False])
 def test_SFRD_conditional_table(
     name,
     delta_range,
     R,
     mini,
-    reionization_feedback_model,
+    use_reionization_photoheating_feedback,
     intmethod,
     default_global_evolution_mini,
     plt,
@@ -783,11 +773,6 @@ def test_SFRD_conditional_table(
 
     mini_flag = mini == "mini"
 
-    if not mini_flag and reionization_feedback_model in ["MCG", "BOTH"]:
-        pytest.skip(
-            "NO POINT IN TESTING REIONIZATION FEEDBACK ON MCG TURNOVER MASS WITHOUT MCGS"
-        )
-
     redshift, kwargs = OPTIONS_HMF[name]
     global_evolution = default_global_evolution_mini
     inputs = get_all_options_struct(
@@ -797,7 +782,7 @@ def test_SFRD_conditional_table(
         USE_TS_FLUCT=True,
         ZPRIME_STEP_FACTOR=1.2,  # needed because we need inputs.node_redshifts == global_evolution.node_redshifts
         M_TURN_STELLAR_FEEDBACK=5.0,
-        REIONIZATION_FEEDBACK_MODEL=reionization_feedback_model,
+        USE_REIONIZATION_PHOTOHEATING_FEEDBACK=use_reionization_photoheating_feedback,
         INTEGRATION_METHOD_ATOMIC=OPTIONS_INTMETHOD[intmethod],
         INTEGRATION_METHOD_MINI=OPTIONS_INTMETHOD[intmethod],
         node_redshifts=global_evolution.node_redshifts,

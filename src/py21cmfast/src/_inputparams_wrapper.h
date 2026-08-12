@@ -15,7 +15,6 @@ typedef int use_interpolation_tables_t;
 // AstroOptions enums
 typedef int photon_cons_type_t;
 typedef int recombination_model_t;
-typedef int reionization_feedback_model_t;
 typedef int integration_method_t;
 
 typedef struct CosmoParams {
@@ -160,11 +159,11 @@ typedef struct AstroOptions {
     bool USE_UPPER_STELLAR_TURNOVER;
     bool HALO_SCALING_RELATIONS_MEDIAN;
     bool IONISE_ENTIRE_SPHERE;
+    bool USE_REIONIZATION_PHOTOHEATING_FEEDBACK;
     photon_cons_type_t PHOTON_CONS_TYPE;
     filter_t HII_FILTER;
     filter_t HEAT_FILTER;
     recombination_model_t RECOMB_MODEL;
-    reionization_feedback_model_t REIONIZATION_FEEDBACK_MODEL;
     integration_method_t INTEGRATION_METHOD_ATOMIC;
     integration_method_t INTEGRATION_METHOD_MINI;
 } AstroOptions;

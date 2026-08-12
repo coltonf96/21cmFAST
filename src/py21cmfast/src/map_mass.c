@@ -291,8 +291,7 @@ void move_grid_galprops(double redshift, float *dens_pointer, int dens_dim[3],
 
                     resample_index((int[3]){i, j, k}, dim_ratio_out, ipos);
                     mturn_index = grid_index_general(ipos[0], ipos[1], ipos[2], out_dim);
-                    if (uses_reionization_feedback_in_acgs(
-                            astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+                    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                         l10_mturn_acg = log10_mturn_acg_grid[dens_index];
                     }
                     if (astro_options_global->USE_MINI_HALOS) {
@@ -412,8 +411,7 @@ void move_halo_galprops(double redshift, HaloCatalog *halos, float *vel_pointers
             pos[0] = pos[0] * out_dim[0] / box_size[0];
             pos[1] = pos[1] * out_dim[1] / box_size[1];
             pos[2] = pos[2] * out_dim[2] / box_size[2];
-            if (uses_reionization_feedback_in_acgs(
-                    astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+            if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                 M_turn_acg = pow(10, cic_read_float(log10_mturn_acg_grid, pos, out_dim));
             }
             if (astro_options_global->USE_MINI_HALOS) {

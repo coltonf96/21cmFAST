@@ -68,7 +68,7 @@ def compute_global_reionization_at_z(
         # that also with USE_TS_FLUCT=True, the ACG turnover mass is currently ALWAYS evaluated in SpinTemperatureBox.c with no reionization feedback,
         # (see https://github.com/21cmfast/21cmFAST/issues/470).
         inputs_no_reionization_feedback = inputs.evolve_input_structs(
-            REIONIZATION_FEEDBACK_MODEL="NONE"
+            USE_REIONIZATION_PHOTOHEATING_FEEDBACK=False
         )
         nion, _ = evaluate_Nion_z(
             inputs=inputs_no_reionization_feedback,

@@ -235,7 +235,7 @@ void allocate_fftw_grids(struct FilteredGrids **fg_struct) {
         (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
 
     if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
             (*fg_struct)->log10_mturn_acg_grid_unfiltered =
                 (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
             (*fg_struct)->log10_mturn_acg_grid_filtered =
@@ -290,7 +290,7 @@ void free_fftw_grids(struct FilteredGrids *fg_struct) {
     fftwf_free(fg_struct->deltax_filtered);
 
     if (source_model_uses_eulerian_grids(matter_options_global->SOURCE_MODEL)) {
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
             fftwf_free(fg_struct->log10_mturn_acg_grid_unfiltered);
             fftwf_free(fg_struct->log10_mturn_acg_grid_filtered);
         }
@@ -414,11 +414,11 @@ void calculate_mcrit_boxes(IonizedBox *prev_ionbox, TsBox *spin_temp, InitialCon
                            fftwf_complex *log10_mturn_mcg_grid, double *log10_mturn_acg_avg_out,
                            double *log10_mturn_mcg_avg_out) {
     double log10_mturn_mcg_avg = 0., log10_mturn_acg_avg = 0.;
-    // If we either use mini-halos or at least the reionization feedback model is applied on the ACG
-    // turnover mass, we need to compute the local fluctuating turnover mass at every cell. The mean
-    // of the log10 of these turnover mass fields is then computed from averaging over the box
+    // If we either use mini-halos or reionization feedback, we need to compute the local
+    // fluctuating turnover mass at every cell. The mean of the log10 of these turnover mass
+    // fields is then computed from averaging over the box
     if (astro_options_global->USE_MINI_HALOS ||
-        uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
         int box_dim[3] = {simulation_options_global->HII_DIM, simulation_options_global->HII_DIM,
                           HII_D_PARA};
 
@@ -445,8 +445,7 @@ void calculate_mcrit_boxes(IonizedBox *prev_ionbox, TsBox *spin_temp, InitialCon
                             if (astro_options_global->USE_MINI_HALOS) {
                                 J21_val = spin_temp->J_21_LW[index];
                             }
-                            if (uses_reionization_feedback(
-                                    astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+                            if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                                 Gamma12_val = prev_ionbox->ionisation_rate_G12[index];
                                 zre_val = prev_ionbox->z_reion[index];
                             }
@@ -456,8 +455,7 @@ void calculate_mcrit_boxes(IonizedBox *prev_ionbox, TsBox *spin_temp, InitialCon
                             consts->redshift, consts->scale_consts.mturn_acg_homogeneous, J21_val,
                             curr_vcb, Gamma12_val, zre_val, &M_turn_acg, &M_turn_mcg);
 
-                        if (uses_reionization_feedback_in_acgs(
-                                astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+                        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                             *((float *)log10_mturn_acg_grid + index_f) = log10(M_turn_acg);
                             log10_mturn_acg_avg += log10(M_turn_acg);
                         }
@@ -470,7 +468,7 @@ void calculate_mcrit_boxes(IonizedBox *prev_ionbox, TsBox *spin_temp, InitialCon
             }
         }
     }
-    if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
         *log10_mturn_acg_avg_out = log10_mturn_acg_avg / HII_TOT_NUM_PIXELS;
     } else {
         *log10_mturn_acg_avg_out = log10(consts->scale_consts.mturn_acg_homogeneous);
@@ -615,7 +613,7 @@ void copy_filter_transform(struct FilteredGrids *fg_struct, struct IonBoxConstan
                    sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
         }
     } else {
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
             memcpy(fg_struct->log10_mturn_acg_grid_filtered,
                    fg_struct->log10_mturn_acg_grid_unfiltered,
                    sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
@@ -646,8 +644,7 @@ void copy_filter_transform(struct FilteredGrids *fg_struct, struct IonBoxConstan
                            0.);
             }
         } else {
-            if (uses_reionization_feedback_in_acgs(
-                    astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+            if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                 filter_box(fg_struct->log10_mturn_acg_grid_filtered, box_dim, consts->hii_filter, R,
                            0., 0.);
             }
@@ -670,7 +667,7 @@ void copy_filter_transform(struct FilteredGrids *fg_struct, struct IonBoxConstan
                          HII_D_PARA, simulation_options_global->N_THREADS, fg_struct->sfr_filtered);
         }
     } else {
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
             dft_c2r_cube(matter_options_global->USE_FFTW_WISDOM, simulation_options_global->HII_DIM,
                          HII_D_PARA, simulation_options_global->N_THREADS,
                          fg_struct->log10_mturn_acg_grid_filtered);
@@ -743,7 +740,7 @@ void setup_integration_tables(struct FilteredGrids *fg_struct, struct IonBoxCons
     max_density += 0.001;
 
     if (consts->mass_dep_zeta) {
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
             clip_and_get_extrema(fg_struct->log10_mturn_acg_grid_filtered, 0., LOG10_MTURN_MAX,
                                  &null_min, &null_max);
         }
@@ -864,8 +861,7 @@ void calculate_fcoll_grid(IonizedBox *box, IonizedBox *previous_ionize_box,
                     } else {
                         curr_dens = *((float *)fg_struct->deltax_filtered + index_f);
                         if (consts->mass_dep_zeta) {
-                            if (uses_reionization_feedback_in_acgs(
-                                    astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+                            if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                                 log10_mturn_acg =
                                     *((float *)fg_struct->log10_mturn_acg_grid_filtered + index_f);
                             }
@@ -1509,8 +1505,7 @@ int ComputeIonizedBox(float redshift, float prev_redshift, PerturbedField *pertu
                                               1e20);
                 }
             } else {
-                if (uses_reionization_feedback_in_acgs(
-                        astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+                if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                     dft_r2c_cube(matter_options_global->USE_FFTW_WISDOM,
                                  simulation_options_global->HII_DIM, HII_D_PARA,
                                  simulation_options_global->N_THREADS,

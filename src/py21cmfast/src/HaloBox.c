@@ -452,11 +452,11 @@ void get_log10_turnovers(InitialConditions *ini_boxes, TsBox *previous_spin_temp
                          float *log10_mturn_mcg_grid, ScalingConstants *consts,
                          double averages[2]) {
     double log10_mturn_mcg_avg = 0., log10_mturn_acg_avg = 0.;
-    // If we either use mini-halos or at least the reionization feedback model is applied on the ACG
-    // turnover mass, we need to compute the local fluctuating turnover mass at every cell. The mean
-    // of the log10 of these turnover mass fields is then computed from averaging over the box
+    // If we either use mini-halos or reionization feedback, we need to compute the local
+    // fluctuating turnover mass at every cell. The mean of the log10 of these turnover mass
+    // fields is then computed from averaging over the box
     if (astro_options_global->USE_MINI_HALOS ||
-        uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
 #pragma omp parallel num_threads(simulation_options_global->N_THREADS)
         {
             index_huge i;
@@ -475,8 +475,7 @@ void get_log10_turnovers(InitialConditions *ini_boxes, TsBox *previous_spin_temp
                     if (astro_options_global->USE_MINI_HALOS) {
                         J21_val = previous_spin_temp->J_21_LW[i];
                     }
-                    if (uses_reionization_feedback(
-                            astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+                    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                         Gamma12_val = previous_ionize_box->ionisation_rate_G12[i];
                         zre_val = previous_ionize_box->z_reion[i];
                     }
@@ -485,8 +484,7 @@ void get_log10_turnovers(InitialConditions *ini_boxes, TsBox *previous_spin_temp
                                              J21_val, curr_vcb, Gamma12_val, zre_val, &M_turn_acg,
                                              &M_turn_mcg);
 
-                if (uses_reionization_feedback_in_acgs(
-                        astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+                if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                     log10_mturn_acg_grid[i] = log10(M_turn_acg);
                     log10_mturn_acg_avg += log10(M_turn_acg);
                 }
@@ -498,7 +496,7 @@ void get_log10_turnovers(InitialConditions *ini_boxes, TsBox *previous_spin_temp
         }
     }
 
-    if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
         // NOTE: This average log10 Mturn will be passed onto the spin temperature calculations
         // where it is used to perform the frequency integrals (over tau, dependent on <XHI>), and
         // possibly for mean fixing. It is the volume-weighted mean of LOG10 Mturn, although we
@@ -614,7 +612,7 @@ int ComputeHaloBox(double redshift, InitialConditions *ini_boxes, HaloCatalog *h
         float *log10_mturn_acg_grid = NULL;
         float *log10_mturn_mcg_grid = NULL;
 
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
             log10_mturn_acg_grid = calloc(HII_TOT_NUM_PIXELS, sizeof(float));
         }
         if (astro_options_global->USE_MINI_HALOS) {
@@ -646,7 +644,7 @@ int ComputeHaloBox(double redshift, InitialConditions *ini_boxes, HaloCatalog *h
         }
         halobox_debug_print_avg(grids, &hbox_consts, M_min, M_MAX_INTEGRAL);
 
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
             free(log10_mturn_acg_grid);
         }
         if (astro_options_global->USE_MINI_HALOS) {
@@ -729,8 +727,7 @@ int test_halo_props(double redshift, float *vcb_grid, float *J21_LW_grid, float 
                 // NOTE: I could easily apply reionization feedback without minihalos but this was
                 // not done previously
                 if (astro_options_global->USE_MINI_HALOS ||
-                    uses_reionization_feedback_in_acgs(
-                        astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+                    astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                     if (matter_options_global->V_CB_MODEL == V_CB_MODEL_FLUCTS &&
                         astro_options_global->USE_MINI_HALOS) {
                         curr_vcb = vcb_grid[i_cell];
@@ -795,7 +792,7 @@ int convert_halo_props(double redshift, InitialConditions *ics, TsBox *prev_ts,
     float *log10_mturn_acg_grid = NULL;
     float *log10_mturn_mcg_grid = NULL;
 
-    if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
         log10_mturn_acg_grid = calloc(HII_TOT_NUM_PIXELS, sizeof(float));
     }
     if (astro_options_global->USE_MINI_HALOS) {
@@ -842,8 +839,7 @@ int convert_halo_props(double redshift, InitialConditions *ics, TsBox *prev_ts,
             LOG_ULTRA_DEBUG("getting mturns for halo at (%.2f, %.2f, %.2f)", halo_pos[0],
                             halo_pos[1], halo_pos[2]);
 
-            if (uses_reionization_feedback_in_acgs(
-                    astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+            if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                 M_turn_acg =
                     pow(10, cic_read_float_wrapper(log10_mturn_acg_grid, halo_pos, lo_dim));
             }
@@ -891,7 +887,7 @@ int convert_halo_props(double redshift, InitialConditions *ics, TsBox *prev_ts,
             }
         }
     }
-    if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
         free(log10_mturn_acg_grid);
     }
     if (astro_options_global->USE_MINI_HALOS) {

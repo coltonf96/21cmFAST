@@ -325,7 +325,7 @@ void initialise_Nion_Conditional_spline(double z, double min_density, double max
     // The ACG table could become 2D (delta,mturn) if we apply the inhomogeneous reionization
     // feedback on the ACG turnover mass, otherwise it is 1D (delta) while mturn is set
     // deterministically by the redshift
-    if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
         if (prev) {
             table_acg_2d = &Nion_conditional_table_prev;
         } else {
@@ -384,8 +384,7 @@ void initialise_Nion_Conditional_spline(double z, double min_density, double max
     {
 #pragma omp for
         for (i = 0; i < NDELTA; i++) {
-            if (uses_reionization_feedback_in_acgs(
-                    astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+            if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                 for (j = 0; j < NMTURN; j++) {
                     table_acg_2d->z_arr[i][j] = log(Nion_ConditionalM(
                         growthf, lnMmin, lnMmax, lnM_condition, sigma2, overdense_table[i],
@@ -454,7 +453,7 @@ void initialise_SFRD_Conditional_table(double z, double min_density, double max_
     // The ACG table could become 2D (delta,mturn) if we apply the inhomogeneous reionization
     // feedback on the ACG turnover mass, otherwise it is 1D (delta) while mturn is set
     // deterministically by the redshift
-    if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
         if (!SFRD_conditional_table2D.allocated) {
             allocate_RGTable2D_f(NDELTA, NMTURN, &SFRD_conditional_table2D);
         }
@@ -509,8 +508,7 @@ void initialise_SFRD_Conditional_table(double z, double min_density, double max_
     {
 #pragma omp for
         for (i = 0; i < NDELTA; i++) {
-            if (uses_reionization_feedback_in_acgs(
-                    astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+            if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                 for (j = 0; j < NMTURN; j++) {
                     SFRD_conditional_table2D.z_arr[i][j] = log(Nion_ConditionalM(
                         growthf, lnMmin, lnMmax, lnM_condition, sigma2, overdense_table[i],
@@ -585,7 +583,7 @@ void initialise_Xray_Conditional_table(double redshift, double min_density, doub
     // The ACG table could become 2D (delta,mturn) if we apply the inhomogeneous reionization
     // feedback on the ACG turnover mass, otherwise it is 1D (delta) while mturn is set
     // deterministically by the redshift
-    if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
         if (!Xray_conditional_table_2D.allocated) {
             allocate_RGTable2D_f(NDELTA, NMTURN, &Xray_conditional_table_2D);
         }
@@ -636,8 +634,7 @@ void initialise_Xray_Conditional_table(double redshift, double min_density, doub
     {
 #pragma omp for
         for (i = 0; i < NDELTA; i++) {
-            if (uses_reionization_feedback_in_acgs(
-                    astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+            if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
                 for (j = 0; j < NMTURN; j++) {
                     Xray_conditional_table_2D.z_arr[i][j] =
                         log(Xray_ConditionalM(redshift, growthf, lnMmin, lnMmax, lnM_condition,
@@ -1114,7 +1111,7 @@ double EvaluateSFRD_Conditional(double delta, double log10Mturn_acg, double grow
                                 double M_max, double M_cond, double sigma_max,
                                 ScalingConstants *sc) {
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL))
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK)
             return exp(EvaluateRGTable2D_f(delta, log10Mturn_acg, &SFRD_conditional_table2D));
         return exp(EvaluateRGTable1D_f(delta, &SFRD_conditional_table1D));
     }
@@ -1152,7 +1149,7 @@ double EvaluateNion_Conditional(double delta, double log10Mturn_acg, double grow
                                 bool prev) {
     RGTable2D_f *table = prev ? &Nion_conditional_table_prev : &Nion_conditional_table2D;
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL))
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK)
             return exp(EvaluateRGTable2D_f(delta, log10Mturn_acg, table));
         return exp(EvaluateRGTable1D_f(delta, &Nion_conditional_table1D));
     }
@@ -1185,7 +1182,7 @@ double EvaluateXray_Conditional(double delta, double log10Mturn_acg, double reds
                                 double growthf, double M_min, double M_max, double M_cond,
                                 double sigma_max, ScalingConstants *sc) {
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
-        if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL))
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK)
             return exp(EvaluateRGTable2D_f(delta, log10Mturn_acg, &Xray_conditional_table_2D));
         return exp(EvaluateRGTable1D_f(delta, &Xray_conditional_table_1D));
     }
