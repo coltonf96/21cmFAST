@@ -48,7 +48,7 @@ Similarly, the photoionization rate due to X-ray radiation, as well as the contr
 atoms, are also considered "radiation fields".
 
 Fluxes in ``21cmFAST``
-~~~~~~~~~~~~~~~~~~~~~~~
+-----------------------
 
 The X-ray flux :math:`J_X(\nu, z, \mathbf{x})` is given by integrating over the contributions of all past and distant sources that
 emitted X-ray photons that ultimately reached the point of interest :math:`\mathbf{x}` at redshift :math:`z` and frequency :math:`\nu`.
@@ -91,7 +91,7 @@ photon, and :math:`1+z_{\rm max}(n)=(1+z)[1-(n-1)^{-2}]/(1-n^{-2})`. Note that t
 as the IGM is assumed to be optically thin to any photon with a frequency between Lyman resonances.
 
 ``21cmFAST`` v1.0.0
-----------------------
+~~~~~~~~~~~~~~~~~~~~~~
 
 In the first public release of ``21cmFAST`` (v1.0.0, see Mesinger et al. 2010,
 https://arxiv.org/pdf/1003.3878) there were no radiation fields nor emissivity fields outputs. Instead, they were computed internally as
@@ -110,7 +110,7 @@ where :math:`\nu_{\tau_X=1}` is the frequency at which the X-ray optical depth i
 with X-ray optical depth less than unity contribute to the X-ray radiation fields.
 
 Emissivity Fields
-~~~~~~~~~~~~~~~~~
+-----------------
 
 For the emissivity fields, the code assumed that they follow the derivative of the conditional collapsed fraction of halos above the
 turnover mass :math:`M_{\rm turn}` (see more details about the turnover mass in :doc:`M_TURN`). The X-ray emissivity field was
@@ -158,7 +158,7 @@ the global collapsed fraction, as given by solving the above integral numericall
 (which by default was the Sheth-Tormen mass function).
 
 Effective Emissivity Fields
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+---------------------------
 
 Given the above definitions for the emissivity fields, the effective emissivity fields are achieved by interpolating in time/redshift and
 filtering in space. Since ``21cmFAST`` v1.0.0 did not have the emissivity fields on a grid, the interpolation and filtering was done in
@@ -181,7 +181,7 @@ In addition, the code set the conditional mass for the conditional collapsed fra
 where :math:`R` is the size of the integrated comoving shell in the evaluation of the radiation fields.
 
 ``21cmFAST`` v2.0.0
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 In the second public release of ``21cmFAST`` (v2.0.0, see Park et al. 2018,
 https://arxiv.org/pdf/1809.08995.pdf) the radiation fields and the emissivity fields were still computed internally as part of
@@ -236,7 +236,7 @@ the prescription for the effective emissivity fields remained the same (i.e. the
 and was scaled by the linear growth factor for interpolating the field at :math:`z'`).
 
 ``21cmFAST`` v3.0.0
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 In the third public release of ``21cmFAST`` (v3.0.0, see Qin et al. 2020,
 https://arxiv.org/pdf/2003.04442), a new population of molecular cooling galaxies (MCGs) that reside in mini-halos was introduced.
@@ -264,7 +264,7 @@ The prescription for the effective emissivity fields in ``21cmFAST`` v3.0.0 rema
 density field was filtered with a top-hat filter and was scaled by the linear growth factor for interpolating the field at :math:`z'`).
 
 ``21cmFAST`` v4.0.0
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 In the fourth public release of ``21cmFAST`` v4.0.0 (Davies et al. 2025, https://arxiv.org/pdf/2504.17254), the evaluation of the
 emissivity fields and the radiation fields was changed for several new configurations that were introduced in that version. This was
@@ -322,7 +322,7 @@ For both "Eulerian" and "Lagrangian" source models, the radiation fields were st
 temperature calculation, and were therefore still not accessible to the user.
 
 ``21cmFAST`` v4.3.0
--------------------
+~~~~~~~~~~~~~~~~~~~
 
 In ``21cmFAST`` v4.3.0, in both types of source models, "Eulerian" and "Lagrangian", the effective emissivity fields were computed exactly
 the same given the emissivity fields. This computation follows the prescription that was used in ``21cmFAST`` v4.0.0 for the "Lagrangian"
