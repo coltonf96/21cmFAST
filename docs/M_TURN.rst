@@ -26,8 +26,13 @@ cutoff at the turnover mass,
     f_{\rm duty}(M_h;M_{\rm turn}) = H(M_h-M_{\rm turn}),
 
 
-where :math:`H(x)` is the Heaviside step function. As the time, the common name for the "turnover mass" was "minimum mass" or :math:`M_{\rm min}`. The user could define the turnover mass in terms of the halo mass or the corresponding virial temperature, with the latter implying a redshift dependence to the halo mass (c.f. Eq. 26 in Barkana & Loeb 2001 https://arxiv.org/pdf/astro-ph/0010468).  A common choice was a virial temperature of :math:`10^4` K, which is the threshold mass above which cooling through recombing hydrogen radiation is efficient (i.e. assuming ionized IGM with a mean molecular weight of :math:`\mu=0.59`). Approximately,
-the turnover mass can be written as
+where :math:`H(x)` is the Heaviside step function. At the time, the common name for the "turnover mass"
+was "minimum mass" or :math:`M_{\rm min}`. The user could define the turnover mass in terms of the halo mass
+or the corresponding virial temperature, with the latter implying a redshift dependence to the halo mass
+(c.f. Eq. 26 in Barkana & Loeb 2001 https://arxiv.org/pdf/astro-ph/0010468). A common choice was a virial
+temperature of :math:`10^4` K, which is the threshold mass above which cooling through recombining hydrogen
+radiation is efficient (i.e. assuming ionized IGM with a mean molecular weight of :math:`\mu=0.59`).
+Approximately, the turnover mass can be written as
 
 .. math::
 
@@ -204,13 +209,13 @@ model with stochastic discrete halos was introduced. The source model that was u
 simulation was controlled by a new parameter called ``SOURCE_MODEL``. This parameter had several options:
 
 * ``"CONST-ION-EFF"``:
-  This option was equivalent to setting ``USE_MASS_DEPENDENT_ZETA`` on False
+  This option was equivalent to setting ``USE_MASS_DEPENDENT_ZETA`` to False
   in previous versions, namely the ionization efficiency was constant for all halo masses, the ACG
   turnover mass was set according to the ``M_MIN_in_Mass`` flag, and the ACG duty fraction function
   was a sharp cutoff at the ACG turnover mass.
 
 * ``"E-INTEGRAL"``:
-  This option was equivalent to setting ``USE_MASS_DEPENDENT_ZETA`` on True in
+  This option was equivalent to setting ``USE_MASS_DEPENDENT_ZETA`` to True in
   previous versions, namely the ionization efficiency was mass-dependent, the duty fraction functions
   were smooth exponential cutoffs, and the turnover masses were set according to the logic of v3.1.0
   (with one change, see below). This option was named like that, since the emissivity fields were
@@ -273,10 +278,13 @@ and ``"CHMF-SAMPLER"``, the logic for the turnover masses was as follows:
 
 In ``21cmFAST`` v4.3.0, the logic for the turnover masses was simplified and unified across most
 source models. This became possible by introducing two new parameters, ``V_CB_MODEL`` and
-``USE_REIONIZATION_PHOTOHEATING_FEEDBACK``. The latter was a flag that allowed to apply the inhomogeneous
-reionization feedback effect on the ACG turnover mass, regardless if MCGs were present or not in the
-simulation. This decoupled the application of the reionization feedback from the presence of MCGs in
-the simulation, which was still the logic in v4.0.0.
+``USE_REIONIZATION_PHOTOHEATING_FEEDBACK``. The latter was a flag that allowed applying inhomogeneous
+reionization feedback to all galaxies (both ACGs and MCGs). Note that this is implemented by modifying
+the ACG turnover mass inhomgeneously per-cell, which directly affects the ACGs, and indirectly affects
+the MCGs by extinguishing them since :math:`M_{\rm turn}^{\rm (ACG)} > M_{\rm atom}`. Regardless, operationally
+it suppresses star formation for all species below the inhomgeneous photoheating mass. This new flag decoupled
+the application of the reionization feedback from the presence of MCGs in the simulation,
+which was still the logic in v4.0.0.
 
 In addition, for better clarity, the free astrophysical
 parameter ``M_TURN`` was renamed to ``M_TURN_STELLAR_FEEDBACK``, making it clear that this
@@ -356,7 +364,7 @@ same as in v4.0.0 (or v3.0.0):
 
 .. math::
 
-    f_{\rm duty}^{\rm (ACG)}(M_h;M_{\rm turn}) = \exp\left(-M_{\rm turn}^{\rm (ACG)}/M_h\right).
+    f_{\rm duty}^{\rm (ACG)}(M_h;M_{\rm turn}^{\rm (ACG)}) = \exp\left(-M_{\rm turn}^{\rm (ACG)}/M_h\right).
 
 .. math::
 
@@ -365,5 +373,9 @@ same as in v4.0.0 (or v3.0.0):
 One subtle difference was made in the MCG duty fraction function compared to previous versions: MCGs can
 exist only if the ACG turnover mass is below the atomic cooling threshold mass,
 :math:`M_{\rm turn}^{\rm (ACG)} < M_{\rm atom}`, which is enforced by the Heaviside step
-function. This introduces a sharp cutoff in the MCG abundance (for a particular voxel) at this transition
-point, but the amplitude of this effect is small.
+function. The reason for this is that anything that raises :math:`M_{\rm turn}^{\rm (ACG)}` above
+:math:`M_{\rm atom}` is to do with some feedback suppression, which would also inhibit star formation
+in MCGs equally well. Therefore, given that there is very little star formation in MCGs
+above :math:`M_{\rm atom}`, this suppression beginning at even higher mass will result
+in very few MCGs below :math:`M_{\rm atom}`. The Heaviside function is a computationally efficient
+way of modeling this suppression.
