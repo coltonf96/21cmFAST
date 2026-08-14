@@ -40,7 +40,7 @@ Given the heat transfer rate, the X-ray heating rate is given by
 
 .. math::
 
-    \left.\frac{dT_k}{dt}\right\Bigg|_X = \frac{2}{3 k_B} \frac{\Gamma_X}{1 + x_e},
+    \left.\frac{dT_k}{dt}\right|_X = \frac{2}{3 k_B} \frac{\Gamma_X}{1 + x_e},
 
 where :math:`k_B` is Boltzmann's constant and :math:`x_e` is the local ionization fraction. The X-ray heating rate is thus a physical
 quantity that can be represented as a 3D box at a given redshift, and is thus considered a "radiation field" in ``21cmFAST``.
@@ -252,13 +252,13 @@ where :math:`\nu_\alpha` is the Lyman-alpha frequency. Several notes:
 
 * Note that unlike previous radiation fields, the LW flux contains units of energy, owned by the factor of :math:`h_{\rm P}\nu_\alpha`.
 * The contribution to the LW flux came from both atomic cooling galaxies (ACGs) and MCGs, as the SFRD in both populations is modeled a bit
-differently, mostly in the modeling of the star formation efficiency, the turnover mass and the duty fraction (see more details on the
-latter two in :doc:`M_TURN`). Likewise, the contribution to the X-ray and Lyman-alpha fluxes also came from both ACGs and MCGs.
+  differently, mostly in the modeling of the star formation efficiency, the turnover mass and the duty fraction (see more details on the
+  latter two in :doc:`M_TURN`). Likewise, the contribution to the X-ray and Lyman-alpha fluxes also came from both ACGs and MCGs.
 * It was assumed that ACGs contained only popII stars, while MCGs contained only popIII stars. Therefore,
-the shape of the SEDs in ACGs and MCGs were also different in the evaluation of Lyman-alpha and LW fluxes, as well as their amplitudes
-(controlled by the free parameter :math:`N_{\gamma /{\rm b}}`, which was now split into two free parameters). However, for the evaluation
-of the X-ray flux, the SEDs in both ACGs and MCGs were assumed to be the same, and were modeled as in previous versions, namely
-:math:`I_X(\nu')\propto\nu'^{-\alpha_X}`, where :math:`\alpha_X` is a free parameter.
+  the shape of the SEDs in ACGs and MCGs were also different in the evaluation of Lyman-alpha and LW fluxes, as well as their amplitudes
+  (controlled by the free parameter :math:`N_{\gamma /{\rm b}}`, which was now split into two free parameters). However, for the evaluation
+  of the X-ray flux, the SEDs in both ACGs and MCGs were assumed to be the same, and were modeled as in previous versions, namely
+  :math:`I_X(\nu')\propto\nu'^{-\alpha_X}`, where :math:`\alpha_X` is a free parameter.
 
 The prescription for the effective emissivity fields in ``21cmFAST`` v3.0.0 remained the same as in ``21cmFAST`` v4.0.0 (i.e. the Eulerian
 density field was filtered with a top-hat filter and was scaled by the linear growth factor for interpolating the field at :math:`z'`).

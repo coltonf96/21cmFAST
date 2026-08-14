@@ -871,7 +871,7 @@ def compute_spin_temperature(
     initial_conditions: InitialConditions,
     perturbed_field: PerturbedField,
     inputs: InputParameters | None = None,
-    radiation_fields: RadiationFields | None = None,
+    radiation_fields: RadiationFields,
     previous_spin_temp: TsBox | None = None,
     cleanup: bool = False,
 ) -> TsBox:
@@ -894,7 +894,7 @@ def compute_spin_temperature(
         box. The redshift of perturb field is allowed to be different than `redshift`. If so, it
         will be interpolated to the correct redshift, which can provide a speedup compared to
         actually computing it at the desired redshift.
-    radiation_fields : :class:`RadiationFields`, optional
+    radiation_fields : :class:`RadiationFields`
         This input specifies radiation fields, i.e. X-ray heating rate, photoionization rate, and Lyman-alpha flux.
     previous_spin_temp : :class:`TsBox` or None
         The previous spin temperature box. Needed when we are beyond the first snapshot
@@ -913,11 +913,6 @@ def compute_spin_temperature(
 
     if redshift >= inputs.simulation_options.Z_HEAT_MAX:
         previous_spin_temp = TsBox.dummy()
-
-    if radiation_fields is None:
-        raise ValueError(
-            f"radiation_fields is required for SOURCE_MODEL= {inputs.matter_options.SOURCE_MODEL}"
-        )
 
     # Set up the box without computing anything.
     box = TsBox.new(

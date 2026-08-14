@@ -573,17 +573,6 @@ def test_bad_input_structs(default_input_struct_ts):
             halo_catalog=hf,
         )
 
-    # TsBox
-    with pytest.raises(
-        ValueError,
-        match="radiation_fields is required for SOURCE_MODEL",
-    ):
-        p21c.compute_spin_temperature(
-            initial_conditions=ic,
-            perturbed_field=pt,
-            previous_spin_temp=st_p,
-        )
-
     # IonizedBox
     with pytest.raises(
         ValueError,
