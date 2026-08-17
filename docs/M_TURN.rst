@@ -370,9 +370,9 @@ same as in v4.0.0 (or v3.0.0):
 
     f_{\rm duty}^{\rm (MCG)}(M_h;M_{\rm turn}^{\rm (MCG)},M_{\rm atom}) = \exp\left(-M_{\rm turn}^{\rm (MCG)}/M_h\right)\exp\left(-M_h/M_{\rm atom}\right)H(M_{\rm atom} - M_{\rm turn}^{\rm (ACG)}).
 
-One subtle difference was made in the MCG duty fraction function compared to previous versions: MCGs can
-exist only if the ACG turnover mass is below the atomic cooling threshold mass,
-:math:`M_{\rm turn}^{\rm (ACG)} < M_{\rm atom}`, which is enforced by the Heaviside step
+One subtle difference was made in the MCG duty fraction function compared to previous versions: MCGs cannot
+exist if the ACG turnover mass is above the atomic cooling threshold mass,
+(i.e. if :math:`M_{\rm turn}^{\rm (ACG)} > M_{\rm atom}`), which is enforced by the Heaviside step
 function. The reason for this is that anything that raises :math:`M_{\rm turn}^{\rm (ACG)}` above
 :math:`M_{\rm atom}` is to do with some feedback suppression, which would also inhibit star formation
 in MCGs equally well. Therefore, given that there is very little star formation in MCGs

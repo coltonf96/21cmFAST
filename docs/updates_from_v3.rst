@@ -14,9 +14,9 @@ discrete source field which is then used in the spin temperature and ionization 
 calculations. This not only includes the effects of stochasticity in the IGM observables,
 but also creates several new outputs which can be further used in forecasting galaxy
 survey, line intensity mapping, and cosmic background statistics. The sampler is
-activated with setting ``SOURCE_MODEL`` to ``"CHMF-SAMPLER"`` and serves as a faster
-replacement to the previous excursion-set halo finder (which is still usable by
-``SOURCE_MODEL`` to ``"DEXM-ESF"``), with greatly increased functionality. Halos are
+activated with setting ``SOURCE_MODEL`` to ``"CHMF-SAMPLER"`` and serves as a complementary
+algorithm to the excursion-set halo finder (which can still be usable without the sampler by
+setting ``SOURCE_MODEL`` to ``"DEXM-ESF"``), with greatly increased functionality. Halos are
 sampled in a backward time-loop in each run before the main IGM calculations start.
 Halo catlogues can be found in the :class:`HaloCatalog` (Initial Lagrangian) and
 :class:`PerturbedHaloCatalog` (Final Eulerian) classes. Each catalogue contains the
