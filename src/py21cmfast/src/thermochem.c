@@ -313,29 +313,28 @@ double reionization_feedback(float z, float Gamma_halo_HII, float z_IN) {
 }
 
 void compute_mturns(double z, float J_21_LW, float vcb, float Gamma12, float z_reion,
-                    float *M_turn_a, float *M_turn_m) {
-    float M_turn_a_homo =
+                    float *M_turn_acg, float *M_turn_mcg) {
+    float M_turn_acg_homo =
         fmax(atomic_cooling_threshold(z), astro_params_global->M_TURN_STELLAR_FEEDBACK);
-    compute_mturns_inhomogeneous(z, M_turn_a_homo, J_21_LW, vcb, Gamma12, z_reion, M_turn_a,
-                                 M_turn_m);
+    compute_mturns_inhomogeneous(z, M_turn_acg_homo, J_21_LW, vcb, Gamma12, z_reion, M_turn_acg,
+                                 M_turn_mcg);
     return;
 }
 
-void compute_mturns_inhomogeneous(double z, double M_turn_a_homo, float J_21_LW, float vcb,
-                                  float Gamma12, float z_reion, float *M_turn_a, float *M_turn_m) {
+void compute_mturns_inhomogeneous(double z, double M_turn_acg_homo, float J_21_LW, float vcb,
+                                  float Gamma12, float z_reion, float *M_turn_acg,
+                                  float *M_turn_mcg) {
     float M_turn_r;
-    *M_turn_a = M_turn_a_homo;
-    if (uses_reionization_feedback(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
+    *M_turn_acg = M_turn_acg_homo;
+    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
         M_turn_r = reionization_feedback(z, Gamma12, z_reion);
-    }
-    if (uses_reionization_feedback_in_acgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
-        *M_turn_a = fmax(*M_turn_a, M_turn_r);
+        *M_turn_acg = fmax(*M_turn_acg, M_turn_r);
     }
     if (astro_options_global->USE_MINI_HALOS) {
-        *M_turn_m = fmax(molecular_cooling_threshold_with_feedbacks(z, J_21_LW, vcb),
-                         astro_params_global->M_TURN_STELLAR_FEEDBACK);
-        if (uses_reionization_feedback_in_mcgs(astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
-            *M_turn_m = fmax(*M_turn_m, M_turn_r);
+        *M_turn_mcg = fmax(molecular_cooling_threshold_with_feedbacks(z, J_21_LW, vcb),
+                           astro_params_global->M_TURN_STELLAR_FEEDBACK);
+        if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
+            *M_turn_mcg = fmax(*M_turn_mcg, M_turn_r);
         }
     }
     return;

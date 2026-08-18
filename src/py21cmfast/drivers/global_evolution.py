@@ -68,7 +68,7 @@ def compute_global_reionization_at_z(
         # that also with USE_TS_FLUCT=True, the ACG turnover mass is currently ALWAYS evaluated in SpinTemperatureBox.c with no reionization feedback,
         # (see https://github.com/21cmfast/21cmFAST/issues/470).
         inputs_no_reionization_feedback = inputs.evolve_input_structs(
-            REIONIZATION_FEEDBACK_MODEL="NONE"
+            USE_REIONIZATION_PHOTOHEATING_FEEDBACK=False
         )
         nion, _ = evaluate_Nion_z(
             inputs=inputs_no_reionization_feedback,
@@ -99,6 +99,7 @@ def compute_global_reionization_at_z(
     dzdt = -(1.0 + redshift) * inputs.cosmo_params.cosmo.H(redshift)
     ionisation_rate_G12 = np.abs(dQdz * dzdt)
     ionisation_rate_G12 = np.squeeze(ionisation_rate_G12.to("1/s").value)
+    ionisation_rate_G12 *= 1e12  # convert to units of 10^{-12} s^{-1}
     # TODO: is there a more clever way to estimate global z_reion?
     z_reion = -1.0 if Q_HI > 0.0 else redshift
 
@@ -111,7 +112,7 @@ def compute_global_reionization_at_z(
         case "AVG-DEBUG":
             v_cb = inputs.astro_params.V_CB_AVG_DEBUG
 
-    M_turn_a, M_turn_m = compute_mturns(
+    M_turn_acg, M_turn_mcg = compute_mturns(
         inputs=inputs,
         redshifts=redshift,
         J_LW_21=J_LW_21,
@@ -134,9 +135,9 @@ def compute_global_reionization_at_z(
             .initialize()
             .with_value(val=val * np.ones(shape)),
         )
-    box.log10_Mturnover_ave = np.log10(M_turn_a)
-    if M_turn_m is not None:
-        box.log10_Mturnover_MINI_ave = np.log10(M_turn_m)
+    box.log10_Mturnover_ave = np.log10(M_turn_acg)
+    if M_turn_mcg is not None:
+        box.log10_Mturnover_MINI_ave = np.log10(M_turn_mcg)
     return box
 
 

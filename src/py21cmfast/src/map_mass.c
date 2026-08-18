@@ -213,8 +213,8 @@ void move_grid_masses(double redshift, float *dens_pointer, int dens_dim[3], flo
 //  are on the innermost loops, any generalisation is likely to slow things down.
 void move_grid_galprops(double redshift, float *dens_pointer, int dens_dim[3],
                         float *vel_pointers[3], float *vel_pointers_2LPT[3], int vel_dim[3],
-                        HaloBox *boxes, int out_dim[3], float *log10_mturn_a_grid,
-                        float *log10_mturn_m_grid, ScalingConstants *consts,
+                        HaloBox *boxes, int out_dim[3], float *log10_mturn_acg_grid,
+                        float *log10_mturn_mcg_grid, ScalingConstants *consts,
                         IntegralCondition *integral_cond) {
     // grid dimension constants
     double boxlen = simulation_options_global->BOX_LEN;
@@ -258,10 +258,10 @@ void move_grid_galprops(double redshift, float *dens_pointer, int dens_dim[3],
         double pos[3], curr_dens;
         int ipos[3];
         index_huge vel_index, dens_index, mturn_index;
-        double l10_mturn_a =
+        double l10_mturn_acg =
             log10(consts->mturn_acg_homogeneous);  // used if we don't apply inhomogeneous
                                                    // reionization feedback on ACGS
-        double l10_mturn_m = 0.;  // dummy value for the USE_MINI_HALOS = false branch
+        double l10_mturn_mcg = 0.;  // dummy value for the USE_MINI_HALOS = false branch
         HaloProperties properties;
 #pragma omp for
         for (i = 0; i < dens_dim[0]; i++) {
@@ -291,16 +291,15 @@ void move_grid_galprops(double redshift, float *dens_pointer, int dens_dim[3],
 
                     resample_index((int[3]){i, j, k}, dim_ratio_out, ipos);
                     mturn_index = grid_index_general(ipos[0], ipos[1], ipos[2], out_dim);
-                    if (uses_reionization_feedback_in_acgs(
-                            astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
-                        l10_mturn_a = log10_mturn_a_grid[dens_index];
+                    if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
+                        l10_mturn_acg = log10_mturn_acg_grid[dens_index];
                     }
                     if (astro_options_global->USE_MINI_HALOS) {
-                        l10_mturn_m = log10_mturn_m_grid[dens_index];
+                        l10_mturn_mcg = log10_mturn_mcg_grid[dens_index];
                     }
 
-                    get_cell_integrals(curr_dens, l10_mturn_a, l10_mturn_m, consts, integral_cond,
-                                       &properties);
+                    get_cell_integrals(curr_dens, l10_mturn_acg, l10_mturn_mcg, consts,
+                                       integral_cond, &properties);
 
                     // using the properties struct:
                     // stellar_mass --> no F_esc integral ACG
@@ -349,8 +348,8 @@ void move_grid_galprops(double redshift, float *dens_pointer, int dens_dim[3],
 }
 
 void move_halo_galprops(double redshift, HaloCatalog *halos, float *vel_pointers[3],
-                        float *vel_pointers_2LPT[3], int vel_dim[3], float *log10_mturn_a_grid,
-                        float *log10_mturn_m_grid, HaloBox *boxes, int out_dim[3],
+                        float *vel_pointers_2LPT[3], int vel_dim[3], float *log10_mturn_acg_grid,
+                        float *log10_mturn_mcg_grid, HaloBox *boxes, int out_dim[3],
                         ScalingConstants *consts) {
     // grid dimension constants
     double boxlen = simulation_options_global->BOX_LEN;
@@ -379,9 +378,9 @@ void move_halo_galprops(double redshift, HaloCatalog *halos, float *vel_pointers
         int ipos[3];
         index_huge i, vel_index;
         HaloProperties properties;
-        double M_turn_a = consts->mturn_acg_homogeneous;  // used if we don't apply inhomogeneous
-                                                          // reionization feedback on ACGS
-        double M_turn_m = 0.;  // dummy value for the USE_MINI_HALOS = false branch
+        double M_turn_acg = consts->mturn_acg_homogeneous;  // used if we don't apply inhomogeneous
+                                                            // reionization feedback on ACGS
+        double M_turn_mcg = 0.;  // dummy value for the USE_MINI_HALOS = false branch
         double halo_rng[3];
         double hmass;
 #pragma omp for
@@ -412,19 +411,18 @@ void move_halo_galprops(double redshift, HaloCatalog *halos, float *vel_pointers
             pos[0] = pos[0] * out_dim[0] / box_size[0];
             pos[1] = pos[1] * out_dim[1] / box_size[1];
             pos[2] = pos[2] * out_dim[2] / box_size[2];
-            if (uses_reionization_feedback_in_acgs(
-                    astro_options_global->REIONIZATION_FEEDBACK_MODEL)) {
-                M_turn_a = pow(10, cic_read_float(log10_mturn_a_grid, pos, out_dim));
+            if (astro_options_global->USE_REIONIZATION_PHOTOHEATING_FEEDBACK) {
+                M_turn_acg = pow(10, cic_read_float(log10_mturn_acg_grid, pos, out_dim));
             }
             if (astro_options_global->USE_MINI_HALOS) {
-                M_turn_m = pow(10, cic_read_float(log10_mturn_m_grid, pos, out_dim));
+                M_turn_mcg = pow(10, cic_read_float(log10_mturn_mcg_grid, pos, out_dim));
             }
             halo_rng[0] = halos->star_rng[i];
             halo_rng[1] = halos->sfr_rng[i];
             halo_rng[2] = halos->xray_rng[i];
 
             // CIC interpolation
-            set_halo_properties(hmass, M_turn_a, M_turn_m, consts, halo_rng, &properties);
+            set_halo_properties(hmass, M_turn_acg, M_turn_mcg, consts, halo_rng, &properties);
             do_cic_interpolation(boxes->halo_sfr, pos, out_dim, properties.halo_sfr);
             do_cic_interpolation(boxes->n_ion, pos, out_dim, properties.n_ion);
             if (astro_options_global->USE_MINI_HALOS) {
@@ -454,8 +452,8 @@ void move_halo_galprops(double redshift, HaloCatalog *halos, float *vel_pointers
                     hmass, properties.stellar_mass, properties.stellar_mass_mini,
                     properties.halo_sfr, properties.sfr_mini, properties.halo_xray,
                     properties.n_ion, properties.fescweighted_sfr, properties.metallicity, i);
-                LOG_ULTRA_DEBUG("Mturn_a %.2e Mturn_m %.2e RNG %.3f %.3f %.3f", M_turn_a, M_turn_m,
-                                halo_rng[0], halo_rng[1], halo_rng[2]);
+                LOG_ULTRA_DEBUG("Mturn_acg %.2e Mturn_mcg %.2e RNG %.3f %.3f %.3f", M_turn_acg,
+                                M_turn_mcg, halo_rng[0], halo_rng[1], halo_rng[2]);
             }
 #endif
         }

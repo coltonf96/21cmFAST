@@ -103,7 +103,7 @@ OPTIONS_TESTRUNS = {
             "V_CB_MODEL": "FLUCTS",
             "POWER_SPECTRUM": "CLASS",
             "K_MAX_FOR_CLASS": 1.0,
-            "REIONIZATION_FEEDBACK_MODEL": "BOTH",
+            "USE_REIONIZATION_PHOTOHEATING_FEEDBACK": True,
         },
     ],
     "mini_gamma_approx": [
@@ -121,7 +121,7 @@ OPTIONS_TESTRUNS = {
             "INTEGRATION_METHOD_ATOMIC": "GAMMA-APPROX",
             "POWER_SPECTRUM": "CLASS",
             "K_MAX_FOR_CLASS": 1.0,
-            "REIONIZATION_FEEDBACK_MODEL": "BOTH",
+            "USE_REIONIZATION_PHOTOHEATING_FEEDBACK": True,
         },
     ],
     "ts": [
@@ -186,7 +186,7 @@ OPTIONS_TESTRUNS = {
             "POWER_SPECTRUM": "CLASS",
             "M_TURN_STELLAR_FEEDBACK": 5.0,
             "K_MAX_FOR_CLASS": 1.0,
-            "REIONIZATION_FEEDBACK_MODEL": "BOTH",
+            "USE_REIONIZATION_PHOTOHEATING_FEEDBACK": True,
         },
     ],
     "sampler_ts": [
@@ -274,7 +274,7 @@ OPTIONS_TESTRUNS = {
             "K_MAX_FOR_CLASS": 1.0,
             "R_BUBBLE_MAX": 50.0,
             "M_TURN_STELLAR_FEEDBACK": 5.0,
-            "REIONIZATION_FEEDBACK_MODEL": "BOTH",
+            "USE_REIONIZATION_PHOTOHEATING_FEEDBACK": True,
         },
     ],
 }
