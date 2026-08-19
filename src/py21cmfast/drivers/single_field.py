@@ -602,23 +602,6 @@ def _interpolate_and_evaluate_radiation_fields(
         )
 
         if need_c:
-            # if we have no halos we ignore the whole shell
-            sfr_allzero = np.all(hbox_interp.get("halo_sfr") == 0)
-            if inputs.astro_options.USE_MINI_HALOS:
-                sfr_allzero = sfr_allzero & np.all(
-                    hbox_interp.get("halo_sfr_mini") == 0
-                )
-            if sfr_allzero:
-                radiation_fields.filtered_sfr.value[...] = 0
-                radiation_fields.filtered_xray.value[...] = 0
-                if inputs.astro_options.USE_MINI_HALOS:
-                    radiation_fields.filtered_sfr_mini.value[...] = 0
-                    if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
-                        radiation_fields.filtered_sfr_lw.value[...] = 0
-                        radiation_fields.filtered_sfr_mini_lw.value[...] = 0
-                logger.debug(f"ignoring Radius {i} due to no stars")
-                continue
-
             radiation_fields = radiation_fields.compute(
                 redshift=redshift,
                 halobox=hbox_interp,

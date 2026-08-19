@@ -77,7 +77,7 @@ int ComputeLF(int nbins, int component, int NUM_OF_REDSHIFT_FOR_LF, double *z_LF
         int i_unity, i_smth, mf, nbins_smth = 7;
         double dlnMhalo, lnMhalo_i, SFRparam, Muv_1, Muv_2, dMuvdMhalo;
         double Mhalo_i, lnMhalo_min, lnMhalo_max, lnMhalo_lo, lnMhalo_hi, dlnM, growthf;
-        double f_duty_upper;
+        double f_duty_upper, Mcrit_atom;
         float Fstar, Fstar_temp;
         double dndm;
         int gsl_status;
@@ -98,6 +98,7 @@ int ComputeLF(int nbins, int component, int NUM_OF_REDSHIFT_FOR_LF, double *z_LF
 
         for (i_z = 0; i_z < NUM_OF_REDSHIFT_FOR_LF; i_z++) {
             growthf = dicke(z_LF[i_z]);
+            Mcrit_atom = atomic_cooling_threshold(z_LF[i_z]);
 
             i_unity = -1;
             for (i = 0; i < nbins; i++) {
@@ -183,12 +184,12 @@ int ComputeLF(int nbins, int component, int NUM_OF_REDSHIFT_FOR_LF, double *z_LF
                         f_duty_upper = 1.;
                         M_turns[i_z] = M_TURNs_ACG[i_z];
                     } else {
-                        if (M_TURNs_MCG[i_z] >= M_TURNs_ACG[i_z]) {
-                            // TODO: is this the correct thing to do? See
-                            // https://github.com/21cmfast/21cmFAST/issues/733
+                        // MCGs cannot form if the ACG turnover mass is above the atomic cooling
+                        // threshold (the multiplication by 1.001 is to avoid floating point issues)
+                        if (M_TURNs_ACG[i_z] > Mcrit_atom * 1.001) {
                             f_duty_upper = 0.;
                         } else {
-                            f_duty_upper = exp(-(Mhalo_param[i] / M_TURNs_ACG[i_z]));
+                            f_duty_upper = exp(-(Mhalo_param[i] / Mcrit_atom));
                         }
                         M_turns[i_z] = M_TURNs_MCG[i_z];
                     }
@@ -255,12 +256,12 @@ int ComputeLF(int nbins, int component, int NUM_OF_REDSHIFT_FOR_LF, double *z_LF
                         f_duty_upper = 1.;
                         M_turns[i_z] = M_TURNs_ACG[i_z];
                     } else {
-                        if (M_TURNs_MCG[i_z] >= M_TURNs_ACG[i_z]) {
-                            // TODO: is this the correct thing to do? See
-                            // https://github.com/21cmfast/21cmFAST/issues/733
+                        // MCGs cannot form if the ACG turnover mass is above the atomic cooling
+                        // threshold (the multiplication by 1.001 is to avoid floating point issues)
+                        if (M_TURNs_ACG[i_z] > Mcrit_atom * 1.001) {
                             f_duty_upper = 0.;
                         } else {
-                            f_duty_upper = exp(-(Mhalo_param[i] / M_TURNs_ACG[i_z]));
+                            f_duty_upper = exp(-(Mhalo_param[i] / Mcrit_atom));
                         }
                         M_turns[i_z] = M_TURNs_MCG[i_z];
                     }

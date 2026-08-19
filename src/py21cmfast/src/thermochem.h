@@ -20,9 +20,10 @@ double HeI_ion_crosssec(double nu);
 double HeII_ion_crosssec(double nu);
 double HI_ion_crosssec(double nu);
 double neutral_fraction(double density, double T4, double gamma, int usecaseB);
-void compute_mturns_inhomogeneous(double z, double M_turn_a_homo, float J_21_LW, float vcb,
-                                  float Gamma12, float z_reion, float *M_turn_a, float *M_turn_m);
+void compute_mturns_inhomogeneous(double z, double M_turn_acg_homo, float J_21_LW, float vcb,
+                                  float Gamma12, float z_reion, float *M_turn_acg,
+                                  float *M_turn_mcg);
 void compute_mturns(double z, float J_21_LW, float vcb, float Gamma12, float z_reion,
-                    float *M_turn_a, float *M_turn_m);
+                    float *M_turn_acg, float *M_turn_mcg);
 
 #endif

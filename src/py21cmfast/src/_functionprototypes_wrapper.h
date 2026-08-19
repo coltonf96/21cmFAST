@@ -155,5 +155,5 @@ double unconditional_hmf(double growthf, double lnM, double z, int HMF);
 double conditional_hmf(double growthf, double lnM, double delta, double sigma, int HMF);
 double expected_nhalo(double redshift);
 void compute_mturns(double z, float J_21_LW, float vcb, float Gamma12, float z_reion,
-                    float *M_turn_a, float *M_turn_m);
+                    float *M_turn_acg, float *M_turn_mcg);
 /*-----------------------*/
