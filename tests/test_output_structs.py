@@ -269,8 +269,8 @@ def test_optional_field_halobox(default_input_struct_lc: InputParameters):
 
 
 def test_optional_field_xrs(default_input_struct_lc: InputParameters):
-    """Ensure that the correct XraySourceBox fields are set based on the parameters."""
-    xr = ox.XraySourceBox.new(redshift=0.0, inputs=default_input_struct_lc)
+    """Ensure that the correct RadiationFields are set based on the parameters."""
+    xr = ox.RadiationFields.new(redshift=0.0, inputs=default_input_struct_lc)
     assert isinstance(xr.filtered_sfr, Array)
     assert isinstance(xr.filtered_xray, Array)
     assert xr.filtered_sfr_mini is None
@@ -280,7 +280,7 @@ def test_optional_field_xrs(default_input_struct_lc: InputParameters):
         USE_MINI_HALOS=True,
         RECOMB_MODEL="inhomogeneous",
     )
-    xr = ox.XraySourceBox.new(redshift=0.0, inputs=inputs)
+    xr = ox.RadiationFields.new(redshift=0.0, inputs=inputs)
     assert isinstance(xr.filtered_sfr_mini, Array)
 
 

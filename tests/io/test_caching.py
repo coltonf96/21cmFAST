@@ -81,7 +81,7 @@ class TestCacheConfig:
         fields = attrs.fields(caching.CacheConfig)
 
         # Annoying fields that we don't want to cache
-        annoying_fields = ["xray_source_box", "initial_conditions"]
+        annoying_fields = ["radiation_fields", "initial_conditions"]
         kwargs = dict.fromkeys(annoying_fields, False)
 
         # First check that the update method works as expected
@@ -121,7 +121,7 @@ class TestRunCache:
         assert isinstance(cache.IonizedBox, dict)
         assert isinstance(cache.BrightnessTemp, dict)
         assert isinstance(cache.TsBox, dict)
-        assert isinstance(cache.XraySourceBox, dict)
+        assert isinstance(cache.RadiationFields, dict)
 
         assert len(cache.HaloBox) == len(inputs.node_redshifts)
 
