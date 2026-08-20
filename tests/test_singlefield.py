@@ -87,7 +87,6 @@ def spin_temp_evolution(ic: InitialConditions, default_input_struct_ts: TsBox, c
         )
 
         rf = p21c.compute_radiation_fields(
-            initial_conditions=ic,
             hboxes=[hb],
             redshift=z,
             cache=cache,
@@ -628,7 +627,6 @@ def test_radiation_fields_with_zero_sfr(
         LYA_MULTIPLE_SCATTERING=lya_multiple_scattering,
         SOURCE_MODEL="L-INTEGRAL",
     )
-    ics = p21c.InitialConditions.new(inputs=inputs)
 
     hbox1 = HaloBox.new(redshift=redshift + 1, inputs=inputs)
     hbox2 = HaloBox.new(redshift=redshift, inputs=inputs)
@@ -650,7 +648,6 @@ def test_radiation_fields_with_zero_sfr(
             hbox.log10_Mcrit_MCG_ave = 5.0
 
     radiation_fields = p21c.compute_radiation_fields(
-        initial_conditions=ics,
         hboxes=[hbox1, hbox2],
         redshift=redshift,
     )

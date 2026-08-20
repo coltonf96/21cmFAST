@@ -64,6 +64,13 @@ typedef struct HaloBox {
     double log10_Mcrit_MCG_ave;
 } HaloBox;
 
+typedef struct RadiationFieldsSetup {
+    double *ave_log10_MturnLW;
+    double x_e_ave_zp;
+    double Q_HI_zp;
+    int NO_LIGHT;
+} RadiationFieldsSetup;
+
 typedef struct RadiationFields {
     float *filtered_sfr;
     float *filtered_xray;

@@ -504,10 +504,10 @@ int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
 
     // NOTE: only used without MASS_DEPENDENT_ZETA
     rad_setup->Q_HI_zp = 1 - (ION_EFF_FACTOR * sum_nion + ION_EFF_FACTOR_MINI * sum_nion_mini) /
-                                 (1.0 - rad_setup->x_e_ave_p);
+                                 (1.0 - rad_setup->x_e_ave_zp);
 
     // Initialise freq tables & prefactors (x_e by R tables)
-    fill_freqint_tables(zp, rad_setup->x_e_ave_p, rad_setup->Q_HI_zp, rad_setup->ave_log10_MturnLW,
+    fill_freqint_tables(zp, rad_setup->x_e_ave_zp, rad_setup->Q_HI_zp, rad_setup->ave_log10_MturnLW,
                         &sc);
 
     return sum_nion + sum_nion_mini > 1e-15 ? 0 : 1;  // NO_LIGHT returned
@@ -518,68 +518,62 @@ int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
    of the radiation fields (x-ray heating rate, photoionization rate, lyman alpha flux, etc.). This
    is done by setting the fields in the input rad_setup.
 */
-void setup_radiation_fields(float redshift, float perturbed_field_redshift,
-                            RadiationFields *radiation_fields, RadiationFieldsSetup *rad_setup,
-                            PerturbedField *perturbed_field, TsBox *previous_spin_temp,
-                            InitialConditions *ini_boxes) {
-    int R_ct;
-    index_huge box_ct;
+int SetupRadiationFields(float redshift, TsBox *previous_spin_temp,
+                         RadiationFieldsSetup *rad_setup) {
+    int status;
+    Try {  // This Try{} wraps the whole function.
+        int R_ct;
+        index_huge box_ct;
 
-    // allocate the global arrays we always use
-    if (!TsInterpArraysInitialised) {
-        alloc_global_arrays();
-    }
-    if (astro_options_global->USE_MINI_HALOS) {
-        rad_setup->ave_log10_MturnLW = calloc(astro_params_global->N_STEP_TS, sizeof(double));
-    }
-
-    // setup the R_ct 1D arrays
-    setup_z_edges(redshift);
-
-    calculate_spectral_factors(redshift);
-
-    if (astro_options_global->USE_MINI_HALOS) {
-        for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
-            rad_setup->ave_log10_MturnLW[R_ct] = radiation_fields->mean_log10_Mcrit_LW[R_ct];
+        // allocate the global arrays we always use
+        if (!TsInterpArraysInitialised) {
+            alloc_global_arrays();
         }
-    }
 
-    double x_e_ave_p = 0.0;
+        // setup the R_ct 1D arrays
+        setup_z_edges(redshift);
+
+        calculate_spectral_factors(redshift);
+
+        double x_e_ave_p = 0.0;
 #pragma omp parallel num_threads(simulation_options_global->N_THREADS)
-    {
+        {
 #pragma omp for reduction(+ : x_e_ave_p)
-        for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
-            x_e_ave_p += previous_spin_temp->xray_ionised_fraction[box_ct];
+            for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
+                x_e_ave_p += previous_spin_temp->xray_ionised_fraction[box_ct];
+            }
         }
-    }
-    rad_setup->x_e_ave_p = x_e_ave_p / (float)HII_TOT_NUM_PIXELS;
-    LOG_DEBUG("Prev Box: x_e_ave %.3e", rad_setup->x_e_ave_p);
+        rad_setup->x_e_ave_zp = x_e_ave_p / (float)HII_TOT_NUM_PIXELS;
+        LOG_DEBUG("Prev Box: x_e_ave %.3e", rad_setup->x_e_ave_zp);
 
-    // this should initialise and use the global tables (given box average turnovers)
-    //   and use them to give: Filling factor at zp (only used for !MASS_DEPENDENT_ZETA to get
-    //   ion_eff) global SFRD at each filter radius (numerator of ST_over_PS factor)
+        // this should initialise and use the global tables (given box average turnovers)
+        //   and use them to give: Filling factor at zp (only used for !MASS_DEPENDENT_ZETA to get
+        //   ion_eff) global SFRD at each filter radius (numerator of ST_over_PS factor)
 
-    rad_setup->NO_LIGHT = global_reion_properties(redshift, rad_setup);
+        rad_setup->NO_LIGHT = global_reion_properties(redshift, rad_setup);
 
 #pragma omp parallel private(box_ct) num_threads(simulation_options_global -> N_THREADS)
-    {
-        float xHII_call;
+        {
+            float xHII_call;
 #pragma omp for
-        for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
-            xHII_call = previous_spin_temp->xray_ionised_fraction[box_ct];
-            // Check if ionized fraction is within boundaries; if not, adjust to be within
-            if (xHII_call > x_int_XHII[x_int_NXHII - 1] * 0.999) {
-                xHII_call = x_int_XHII[x_int_NXHII - 1] * 0.999;
-            } else if (xHII_call < x_int_XHII[0]) {
-                xHII_call = 1.001 * x_int_XHII[0];
+            for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
+                xHII_call = previous_spin_temp->xray_ionised_fraction[box_ct];
+                // Check if ionized fraction is within boundaries; if not, adjust to be within
+                if (xHII_call > x_int_XHII[x_int_NXHII - 1] * 0.999) {
+                    xHII_call = x_int_XHII[x_int_NXHII - 1] * 0.999;
+                } else if (xHII_call < x_int_XHII[0]) {
+                    xHII_call = 1.001 * x_int_XHII[0];
+                }
+                // these are the index and interpolation term, moved outside the R loop and stored
+                // to not calculate them R times
+                m_xHII_low_box[box_ct] = locate_xHII_index(xHII_call);
+                inverse_val_box[box_ct] = (xHII_call - x_int_XHII[m_xHII_low_box[box_ct]]) *
+                                          inverse_diff[m_xHII_low_box[box_ct]];
             }
-            // these are the index and interpolation term, moved outside the R loop and stored
-            // to not calculate them R times
-            m_xHII_low_box[box_ct] = locate_xHII_index(xHII_call);
-            inverse_val_box[box_ct] = (xHII_call - x_int_XHII[m_xHII_low_box[box_ct]]) *
-                                      inverse_diff[m_xHII_low_box[box_ct]];
         }
-    }
+    }  // End of try
+    Catch(status) { return (status); }
+    return (0);
 }
 
 /*
@@ -897,15 +891,14 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
 int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, double R_outer,
                           int R_ct, double R_star, short mode, short cleanup,
                           float perturbed_field_redshift, PerturbedField *perturbed_field,
-                          TsBox *previous_spin_temp, InitialConditions *ini_boxes,
-                          RadiationFields *radiation_fields) {
+                          TsBox *previous_spin_temp, RadiationFields *radiation_fields) {
     int status, filter_type;
-    Try {
+    Try {  // This Try{} wraps the whole function.
         // If the redshift is above Z_HEAT_MAX, we skip the calculation of the radiation fields and
-        // return early. Note that setup_radiation_fields below requires previous_spin_temp, and it
+        // return early. Note that SetupRadiationFields below requires previous_spin_temp, and it
         // must be evaluated at least once for redshift > Z_HEAT_MAX, (as the highest node redshift
         // cannot be below Z_HEAT_MAX) so by the time redshift < Z_HEAT_MAX we should have a valid
-        // previous_spin_temp to pass to setup_radiation_fields. I think this is already protected
+        // previous_spin_temp to pass to SetupRadiationFields. I think this is already protected
         // at the python level, but it's still good to have this guard here as well.
         if (redshift >= simulation_options_global->Z_HEAT_MAX) {
             LOG_DEBUG("Redshift %.3f is above Z_HEAT_MAX %.3f, skipping radiation field setup.",
@@ -917,9 +910,17 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
         // shells.
         if (mode == UPDATE_RADIATION_FIELDS_SETUP) {
             rad_setup = malloc(sizeof(RadiationFieldsSetup));
-            setup_radiation_fields(redshift, perturbed_field_redshift, radiation_fields, rad_setup,
-                                   perturbed_field, previous_spin_temp, ini_boxes);
+            if (astro_options_global->USE_MINI_HALOS) {
+                rad_setup->ave_log10_MturnLW =
+                    calloc(astro_params_global->N_STEP_TS, sizeof(double));
+                for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
+                    rad_setup->ave_log10_MturnLW[R_ct] =
+                        radiation_fields->mean_log10_Mcrit_LW[R_ct];
+                }
+            }
+            status = SetupRadiationFields(redshift, previous_spin_temp, rad_setup);
             radiation_fields->Q_HI = rad_setup->Q_HI_zp;
+            if (status) return status;
         }
 
         // Multiply the radiation fields by constants and free the rad_setup struct

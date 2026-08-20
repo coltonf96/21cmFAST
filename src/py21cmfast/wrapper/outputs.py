@@ -1238,8 +1238,77 @@ class HaloBox(OutputStructZ):
 
 
 @attrs.define(slots=False, kw_only=True)
+class RadiationFieldsSetup(OutputStructZ):
+    """A class containing the fields that are neccesary for setting up the radiation fields."""
+
+    _meta = False
+    _c_compute_function = lib.SetupRadiationFields
+
+    Q_HI_zp: float = attrs.field(default=1.0)
+    x_e_ave_zp: float = attrs.field(default=0.0)
+    NO_LIGHT: bool = attrs.field(default=True)
+    ave_log10_MturnLW = _arrayfield(optional=True)
+
+    @classmethod
+    def new(cls, inputs: InputParameters, redshift: float, **kw) -> Self:
+        """Create a new RadiationFieldsSetup instance with the given inputs.
+
+        Parameters
+        ----------
+        inputs : InputParameters
+            The input parameters defining the output struct.
+        redshift : float
+            The redshift at which to compute fields.
+
+        Other Parameters
+        ----------------
+        All other parameters are passed through to the :class:`RadiationFieldsSetup`
+        constructor.
+        """
+        out = {}
+
+        if inputs.astro_options.USE_MINI_HALOS:
+            out["ave_log10_MturnLW"] = Array(
+                (inputs.astro_params.N_STEP_TS,), dtype=np.float64
+            )
+
+        return cls(
+            inputs=inputs,
+            redshift=redshift,
+            **out,
+            **kw,
+        )
+
+    def get_required_input_arrays(self, input_box: OutputStruct) -> list[str]:
+        """Return all input arrays required to compute this object."""
+        required = []
+        if isinstance(input_box, TsBox):
+            required += ["xray_ionised_fraction"]
+        else:
+            raise ValueError(
+                f"{type(input_box)} is not an input required for RadiationFieldsSetup!"
+            )
+
+        return required
+
+    def compute(
+        self,
+        *,
+        redshift,
+        previous_spin_temp: TsBox,
+        allow_already_computed: bool = False,
+    ):
+        """Compute the function."""
+        return self._compute(
+            allow_already_computed,
+            redshift,
+            previous_spin_temp,
+        )
+
+
+@attrs.define(slots=False, kw_only=True)
 class RadiationFields(OutputStructZ):
-    """A class containing the filtered sfr grids."""
+    """A class containing the radiation fields."""
 
     _meta = False
     _c_compute_function = lib.UpdateRadiationFields
@@ -1318,18 +1387,10 @@ class RadiationFields(OutputStructZ):
     def get_required_input_arrays(self, input_box: OutputStruct) -> list[str]:
         """Return all input arrays required to compute this object."""
         required = []
-        if isinstance(input_box, InitialConditions):
-            if (
-                self.matter_options.V_CB_MODEL == "FLUCTS"
-                and self.astro_options.USE_MINI_HALOS
-            ):
-                required += ["lowres_vcb"]
-        elif isinstance(input_box, PerturbedField):
+        if isinstance(input_box, PerturbedField):
             required += ["density"]
         elif isinstance(input_box, TsBox):
             required += ["xray_ionised_fraction"]
-            if self.astro_options.USE_MINI_HALOS:
-                required += ["J_21_LW"]
         elif isinstance(input_box, HaloBox):
             required += ["halo_sfr", "halo_xray"]
             if self.astro_options.USE_MINI_HALOS:
@@ -1354,7 +1415,6 @@ class RadiationFields(OutputStructZ):
         cleanup,
         perturbed_field: PerturbedField,
         previous_spin_temp: TsBox,
-        initial_conditions: InitialConditions,
         allow_already_computed: bool = False,
     ):
         """Compute the function."""
@@ -1371,7 +1431,6 @@ class RadiationFields(OutputStructZ):
             perturbed_field.redshift,
             perturbed_field,
             previous_spin_temp,
-            initial_conditions,
         )
 
 

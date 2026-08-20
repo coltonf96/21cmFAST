@@ -816,7 +816,6 @@ def _redshift_loop_generator(
                     previous_ionize_box=getattr(prev_coeval, "ionized_box", None),
                     previous_spin_temp=getattr(prev_coeval, "ts_box", None),
                     perturbed_field=this_perturbed_field,
-                    initial_conditions=initial_conditions,
                     cleanup=(cleanup and z == all_redshifts[-1]),
                     write=write.radiation_fields,
                     **iokw,
