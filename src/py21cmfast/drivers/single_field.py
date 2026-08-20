@@ -36,7 +36,6 @@ from ._param_config import (
 logger = logging.getLogger(__name__)
 
 update_rad_fields_mode = {
-    "setup": 0,
     "eval": 1,
     "cleanup": 2,
 }
@@ -523,8 +522,8 @@ def _interpolate_and_evaluate_radiation_fields(
     R_range: np.ndarray,
     zpp_avg: np.ndarray,
     z_max: float,
-    need_c: bool,
     radiation_fields: RadiationFields,
+    radiation_fields_setup: RadiationFieldsSetup,
     perturbed_field: PerturbedField | None = None,
     previous_spin_temp: TsBox | None = None,
     cleanup: bool | None = None,
@@ -550,10 +549,10 @@ def _interpolate_and_evaluate_radiation_fields(
     z_max: float
         The maximum redshift for the integration.
         If a shell crosses this redshift, its contribution to the radiation fields is ignored.
-    need_c: bool
-        Whether to evaluate the 3D boxes via the C code.
     previous_spin_temp: :class:`~TsBox`
         The spin temperature box at the previous redshift. Becomes relevant only when redshift < Z_HEAT_MAX.
+    radiation_fields_setup: :class:`~RadiationFieldsSetup`
+        An object containing the setup for the radiation fields (R-independent quantities).
     radiation_fields: :class:`~RadiationFields`
         An object containing the radiation fields, before they had been computed.
     R_star: float | None, optional
@@ -566,42 +565,17 @@ def _interpolate_and_evaluate_radiation_fields(
         An object containing the radiation fields, after they had been computed.
     """
     for i in range(inputs.astro_params.N_STEP_TS):
-        R_inner = R_range[i - 1].to("Mpc").value if i > 0 else 0
-        R_outer = R_range[i].to("Mpc").value
-
         if zpp_avg[i] >= z_max:
-            radiation_fields.filtered_sfr.value[...] = 0
-            radiation_fields.filtered_xray.value[...] = 0
-            if inputs.astro_options.USE_MINI_HALOS:
-                if not need_c:
-                    # If the shell is beyond z_max, we compute the mean log10_Mcrit_MCG
-                    # under the assumption of zero LW flux a constant v_cb, and no reionization feedback
-                    from ..wrapper import cfuncs
-
-                    mturn_MCG = cfuncs.get_molecular_cooling_threshold_with_feedbacks(
-                        inputs=inputs,
-                        redshifts=zpp_avg[i],
-                        J_LW_21=0.0,
-                        v_cb=inputs.cosmo_tables.V_CB_AVG,
-                    )
-                    radiation_fields.mean_log10_Mcrit_LW.value[i] = np.log10(
-                        np.max([mturn_MCG, inputs.astro_params.M_TURN_STELLAR_FEEDBACK])
-                    )
-                radiation_fields.filtered_sfr_mini.value[...] = 0
-                if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
-                    radiation_fields.filtered_sfr_lw.value[...] = 0
-                    radiation_fields.filtered_sfr_mini_lw.value[...] = 0
             logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
-            continue
-
-        hbox_interp = interp_halo_boxes(
-            halo_boxes=hboxes[::-1],
-            interp_fields=interp_fields,
-            redshift=zpp_avg[i],
-            need_c=need_c,
-        )
-
-        if need_c:
+        else:
+            R_inner = R_range[i - 1].to("Mpc").value if i > 0 else 0
+            R_outer = R_range[i].to("Mpc").value
+            hbox_interp = interp_halo_boxes(
+                halo_boxes=hboxes[::-1],
+                interp_fields=interp_fields,
+                redshift=zpp_avg[i],
+                need_c=True,
+            )
             radiation_fields = radiation_fields.compute(
                 redshift=redshift,
                 halobox=hbox_interp,
@@ -611,13 +585,10 @@ def _interpolate_and_evaluate_radiation_fields(
                 R_star=R_star.to("Mpc").value,
                 perturbed_field=perturbed_field,
                 previous_spin_temp=previous_spin_temp,
+                radiation_fields_setup=radiation_fields_setup,
                 mode=update_rad_fields_mode["eval"],
                 cleanup=cleanup,
                 allow_already_computed=True,
-            )
-        else:
-            radiation_fields.mean_log10_Mcrit_LW.value[i] = (
-                hbox_interp.log10_Mcrit_MCG_ave
             )
 
     return radiation_fields
@@ -734,19 +705,16 @@ def setup_radiation_fields(
                     radiation_fields_setup.ave_log10_MturnLW.value[i] = np.log10(
                         np.max([mturn_MCG, inputs.astro_params.M_TURN_STELLAR_FEEDBACK])
                     )
-                    logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
-                    continue
-
-                hbox_interp = interp_halo_boxes(
-                    halo_boxes=hboxes[::-1],
-                    interp_fields=["log10_Mcrit_MCG_ave"],
-                    redshift=zpp_avg[i],
-                    need_c=False,
-                )
-
-                radiation_fields_setup.ave_log10_MturnLW.value[i] = (
-                    hbox_interp.log10_Mcrit_MCG_ave
-                )
+                else:
+                    hbox_interp = interp_halo_boxes(
+                        halo_boxes=hboxes[::-1],
+                        interp_fields=["log10_Mcrit_MCG_ave"],
+                        redshift=zpp_avg[i],
+                        need_c=False,
+                    )
+                    radiation_fields_setup.ave_log10_MturnLW.value[i] = (
+                        hbox_interp.log10_Mcrit_MCG_ave
+                    )
 
         radiation_fields_setup.compute(
             redshift=redshift,
@@ -889,54 +857,6 @@ def compute_radiation_fields(
         if inputs.astro_options.USE_MINI_HALOS:
             interp_fields += ["halo_sfr_mini"]
 
-        # Get log10_Mcrit_MCG_ave for each shell
-        # TODO: The reason why this field is evaluated separately is because it is already required in SetupRadiationFields() in the C code,
-        # as it sets rad_setup->ave_log10_MturnLW. This array is needed (specifically, in global_reion_properties) for two purposese:
-        #   (1) For computing the global Nion, which is used for the NO_LIGHT condition. Here however, note that only the first entry of
-        #       ave_log10_MturnLW is needed, namely for that computation we care about only the CURRENT global turnover mass, not its history.
-        #       This usage therefore does not require the full global array as we compute below.
-        #   (2) For computing the lower limit of the frequency integral (it is used in nu_tau_one_MINI, which is called by fill_freqint_tables).
-        #       Here, we ought to have the full history of the global turnover mass, since that lower limit depends on the frequency in which
-        #       the X-ray optical depth is unity. In order to compute the X-ray optical depth, we need to integrate over the history of the global
-        #       neutral volume filling factor, which is currently approximated by the global Nion (the code does something like x_HI = 1 - Nion/(1-x_e)).
-        #       Hence, the full history of the global turnover mass is needed in order to detemrine the history of x_HI, which is integrated in order to
-        #       get the X-ray optical depth, which is required for setting the lower limit for the frequency integral. In that context, note that the code
-        #       actually uses the global turnover mass at zpp (the redshift that corresponds to the shell), and not at zhat (the dummy integration variable
-        #       in the X-ray optical depth integral), which I believe is a MISTAKE/undocmented approximation. Anyway, the necessity for the full history of
-        #       the global turnover mass for setting the lower limit (as well evaluating the global turnover mass at zpp) should be fixed when addressing
-        #       https://github.com/21cmfast/21cmFAST/issues/659, where the global x_HI at zpp is taken from its history, as was evaluated by the reionization
-        #       code.
-        if inputs.astro_options.USE_MINI_HALOS:
-            radiation_fields = _interpolate_and_evaluate_radiation_fields(
-                redshift=redshift,
-                inputs=inputs,
-                hboxes=hboxes,
-                interp_fields=["log10_Mcrit_MCG_ave"],
-                R_range=R_range,
-                zpp_avg=zpp_avg,
-                z_max=z_max,
-                need_c=False,  # We don't want to use the C code at this stage
-                radiation_fields=radiation_fields,
-            )
-
-        # Initialize the radiation fields in the C code (with mode="setup")
-        # TODO: this is a bit hacky. A better solution would be to have RadiationFieldsSetup that we have in the C code as an
-        #       OutputStructZ, but I suggeste to wait with this solution until https://github.com/21cmfast/21cmFAST/issues/668 is
-        #       fixed, as RadiationFieldsSetup would become much simpler
-        radiation_fields.compute(
-            redshift=redshift,
-            halobox=hboxes[0],  # dummy
-            R_inner=0.0,  # dummy
-            R_outer=0.0,  # dummy
-            R_ct=0,  # dummy
-            R_star=0.0,  # dummy
-            perturbed_field=perturbed_field,
-            previous_spin_temp=previous_spin_temp,
-            mode=update_rad_fields_mode["setup"],
-            cleanup=cleanup,
-            allow_already_computed=True,
-        )
-
         # Interpolate the halo boxes and evaluate the radiation fields
         radiation_fields = _interpolate_and_evaluate_radiation_fields(
             redshift=redshift,
@@ -947,9 +867,9 @@ def compute_radiation_fields(
             zpp_avg=zpp_avg,
             z_max=z_max,
             R_star=R_star,
-            need_c=True,  # Now we call the C function
             perturbed_field=perturbed_field,
             previous_spin_temp=previous_spin_temp,
+            radiation_fields_setup=radiation_fields_setup,
             cleanup=cleanup,
             radiation_fields=radiation_fields,
         )
@@ -968,6 +888,7 @@ def compute_radiation_fields(
             R_star=0.0,  # dummy
             perturbed_field=perturbed_field,
             previous_spin_temp=previous_spin_temp,
+            radiation_fields_setup=radiation_fields_setup,
             mode=update_rad_fields_mode["cleanup"],
             cleanup=cleanup,
             allow_already_computed=True,

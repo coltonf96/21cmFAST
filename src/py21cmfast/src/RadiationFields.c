@@ -27,10 +27,6 @@ This includes X-ray heating rate, photoionization rate, and Lyman-alpha flux.
 #include "interp_tables.h"
 #include "logger.h"
 
-// global pointer to the radiation fields setup struct. This is useful since we visit this module
-// several times per snapshot
-RadiationFieldsSetup *rad_setup = NULL;
-
 // arrays for R-dependent prefactors
 double *lya_flux_continuum_injected_prefactor, *lya_flux_continuum_injected_prefactor_MINI;
 double *lyw_flux_prefactor, *lyw_flux_prefactor_MINI;
@@ -510,6 +506,9 @@ int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
     fill_freqint_tables(zp, rad_setup->x_e_ave_zp, rad_setup->Q_HI_zp, rad_setup->ave_log10_MturnLW,
                         &sc);
 
+    // free the global tables if we used them
+    free_global_tables();
+
     return sum_nion + sum_nion_mini > 1e-15 ? 0 : 1;  // NO_LIGHT returned
 }
 
@@ -584,8 +583,8 @@ int SetupRadiationFields(float redshift, TsBox *previous_spin_temp,
    contribution from a single redshift shell (zpp) and adds it to the total radiation fields. This
    is done by filling the arrays in RadiationFields.
 */
-void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
-                                RadiationFields *radiation_fields, int R_ct) {
+void accumulate_radiation_shell(RadiationFieldsSetup *rad_setup, RadiationFields *radiation_fields,
+                                int R_ct) {
     index_huge box_ct;
     double z_edge_factor, dzpp_for_evolve, zpp, xray_R_factor;
     double lya_flux_continuum_prefactor_mini = 0., lya_flux_injected_prefactor_mini = 0.,
@@ -768,23 +767,6 @@ void multiply_radiation_fields_by_constants(float redshift, RadiationFields *rad
     }
 }
 
-void free_rad_setup(RadiationFieldsSetup *rad_setup, short cleanup) {
-    if (astro_options_global->USE_MINI_HALOS) {
-        free(rad_setup->ave_log10_MturnLW);
-    }
-    free(rad_setup);
-
-    // we definitely don't need these tables anymore
-    // Having these free's here instead of after global_reion_properties just for
-    // MINIMIZE_MEMORY is not ideal,
-    //    but the log10Mturn average is needed
-    free_global_tables();
-
-    if (cleanup) {
-        free_ts_global_arrays();
-    }
-}
-
 // NOTE: I've moved this to a function to help in simplicity, it is not clear whether it is faster
 //   to do all of one radii at once (more clustered FFT and larger thread blocks) or all of one box
 //   (better memory locality)
@@ -891,47 +873,26 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
 int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, double R_outer,
                           int R_ct, double R_star, short mode, short cleanup,
                           float perturbed_field_redshift, PerturbedField *perturbed_field,
-                          TsBox *previous_spin_temp, RadiationFields *radiation_fields) {
-    int status, filter_type;
+                          TsBox *previous_spin_temp, RadiationFieldsSetup *rad_setup,
+                          RadiationFields *radiation_fields) {
+    int status;
     Try {  // This Try{} wraps the whole function.
-        // If the redshift is above Z_HEAT_MAX, we skip the calculation of the radiation fields and
-        // return early. Note that SetupRadiationFields below requires previous_spin_temp, and it
-        // must be evaluated at least once for redshift > Z_HEAT_MAX, (as the highest node redshift
-        // cannot be below Z_HEAT_MAX) so by the time redshift < Z_HEAT_MAX we should have a valid
-        // previous_spin_temp to pass to SetupRadiationFields. I think this is already protected
-        // at the python level, but it's still good to have this guard here as well.
-        if (redshift >= simulation_options_global->Z_HEAT_MAX) {
-            LOG_DEBUG("Redshift %.3f is above Z_HEAT_MAX %.3f, skipping radiation field setup.",
-                      redshift, simulation_options_global->Z_HEAT_MAX);
-            return 0;
-        }
-
-        // We need to do some setup for the radiation fields, before we integrate contributions from
-        // shells.
-        if (mode == UPDATE_RADIATION_FIELDS_SETUP) {
-            rad_setup = malloc(sizeof(RadiationFieldsSetup));
-            if (astro_options_global->USE_MINI_HALOS) {
-                rad_setup->ave_log10_MturnLW =
-                    calloc(astro_params_global->N_STEP_TS, sizeof(double));
-                for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
-                    rad_setup->ave_log10_MturnLW[R_ct] =
-                        radiation_fields->mean_log10_Mcrit_LW[R_ct];
-                }
-            }
-            status = SetupRadiationFields(redshift, previous_spin_temp, rad_setup);
-            radiation_fields->Q_HI = rad_setup->Q_HI_zp;
-            if (status) return status;
-        }
-
-        // Multiply the radiation fields by constants and free the rad_setup struct
-        else if (mode == UPDATE_RADIATION_FIELDS_CLEANUP) {
+        // Multiply the radiation fields by constants and free remaining arrays
+        if (mode == UPDATE_RADIATION_FIELDS_CLEANUP) {
             if (!rad_setup->NO_LIGHT) {
                 multiply_radiation_fields_by_constants(redshift, radiation_fields,
                                                        perturbed_field_redshift, perturbed_field,
                                                        previous_spin_temp);
+                // free fftwf only if we have a full box (with more than one cell)
+                if (simulation_options_global->HII_DIM > 1) {
+                    fftwf_forget_wisdom();
+                    fftwf_cleanup_threads();
+                    fftwf_cleanup();
+                }
             }
-            free_rad_setup(rad_setup, cleanup);
-            rad_setup = NULL;
+            if (cleanup) {
+                free_ts_global_arrays();
+            }
         }
 
         // If we are in the evaluation mode, we calculate the contribution from this shell to the
@@ -939,9 +900,9 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
         else if (mode == UPDATE_RADIATION_FIELDS_EVAL) {
             // If there are no stars, skip the calculation below
             if (!rad_setup->NO_LIGHT) {
-                filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING
-                                  ? FILTER_SPHERICAL_SHELL_MULTIPLE_SCATTERING
-                                  : FILTER_SPHERICAL_SHELL_STRAIGHT_LINE;
+                int filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING
+                                      ? FILTER_SPHERICAL_SHELL_MULTIPLE_SCATTERING
+                                      : FILTER_SPHERICAL_SHELL_STRAIGHT_LINE;
 
                 // only print once, since this is called for every R
                 if (R_ct == 0) LOG_DEBUG("starting RadiationFields");
@@ -980,23 +941,13 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
                 LOG_ULTRA_DEBUG("mean filtered xray = %10.3e unfiltered %10.3e", fxray_avg,
                                 xray_avg);
                 if (astro_options_global->USE_MINI_HALOS) {
-                    LOG_SUPER_DEBUG(
-                        "MINI: filtered sfr %10.3e unfiltered %10.3e log10_Mcrit_LW = %10.3e",
-                        fsfr_avg_mini, sfr_avg_mini, radiation_fields->mean_log10_Mcrit_LW[R_ct]);
+                    LOG_SUPER_DEBUG("MINI: filtered sfr %10.3e unfiltered %10.3e", fsfr_avg_mini,
+                                    sfr_avg_mini);
                 }
 
                 // Given the filtered emissivities, we accumulate the contribution of this shell to
                 // the radiation fields
-                accumulate_radiation_shell(redshift, rad_setup, radiation_fields, R_ct);
-
-                // free fftwf only if we have a full box (with more than one cell)
-                // TODO: Should we call the following at every shell, or only after
-                // UpdateRadiationFields is no longer called in this snapshot?
-                if (simulation_options_global->HII_DIM > 1) {
-                    fftwf_forget_wisdom();
-                    fftwf_cleanup_threads();
-                    fftwf_cleanup();
-                }
+                accumulate_radiation_shell(rad_setup, radiation_fields, R_ct);
             }
         } else {
             LOG_ERROR("Invalid mode %d passed to UpdateRadiationFields", mode);

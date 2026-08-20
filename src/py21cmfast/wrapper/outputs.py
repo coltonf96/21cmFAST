@@ -372,7 +372,11 @@ class OutputStruct(ABC):
 
     def ensure_input_computed(self, input_box: Self, load: bool = False) -> bool:
         """Ensure all the inputs have been computed."""
-        if input_box.dummy:
+        # TODO: This is a hack to avoid having ValueError because the RadiationFieldSetup doesn't have any arrays if mini-halos are not used. This should be fixed in the future.
+        if input_box.dummy or (
+            isinstance(input_box, RadiationFieldsSetup)
+            and not self.astro_options.USE_MINI_HALOS
+        ):
             return True
 
         arrays = self.get_required_input_arrays(input_box)
@@ -1325,7 +1329,6 @@ class RadiationFields(OutputStructZ):
     lyw_flux = _arrayfield(optional=True)
     lya_flux_continuum = _arrayfield(optional=True)
     lya_flux_injected = _arrayfield(optional=True)
-    mean_log10_Mcrit_LW = _arrayfield(optional=True)
     Q_HI: float = attrs.field(default=1.0)
 
     @classmethod
@@ -1360,9 +1363,6 @@ class RadiationFields(OutputStructZ):
         }
         if inputs.astro_options.USE_MINI_HALOS:
             out["filtered_sfr_mini"] = Array(shape, dtype=np.float32)
-            out["mean_log10_Mcrit_LW"] = Array(
-                (inputs.astro_params.N_STEP_TS,), dtype=np.float64
-            )
             out["lyw_flux"] = Array(shape, dtype=np.float64)
             if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
                 out["filtered_sfr_lw"] = Array(shape, dtype=np.float32)
@@ -1395,7 +1395,7 @@ class RadiationFields(OutputStructZ):
             required += ["halo_sfr", "halo_xray"]
             if self.astro_options.USE_MINI_HALOS:
                 required += ["halo_sfr_mini"]
-        else:
+        elif not isinstance(input_box, RadiationFieldsSetup):
             raise ValueError(
                 f"{type(input_box)} is not an input required for RadiationFields!"
             )
@@ -1415,6 +1415,7 @@ class RadiationFields(OutputStructZ):
         cleanup,
         perturbed_field: PerturbedField,
         previous_spin_temp: TsBox,
+        radiation_fields_setup: RadiationFieldsSetup,
         allow_already_computed: bool = False,
     ):
         """Compute the function."""
@@ -1431,6 +1432,7 @@ class RadiationFields(OutputStructZ):
             perturbed_field.redshift,
             perturbed_field,
             previous_spin_temp,
+            radiation_fields_setup,
         )
 
 

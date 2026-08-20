@@ -88,7 +88,6 @@ typedef struct RadiationFields {
     double *lya_flux_injected;
     double *lyw_flux;
 
-    double *mean_log10_Mcrit_LW;
     double Q_HI;
 } RadiationFields;
 
