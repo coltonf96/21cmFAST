@@ -65,9 +65,30 @@ typedef struct HaloBox {
 } HaloBox;
 
 typedef struct RadiationFieldsSetup {
+    // R-dependent arrays which are set once
+    double *R_values, *dzpp_list, *dtdz_list, *zpp_for_evolve_list, *zpp_edge;
+
+    // frequency integral tables
+    double *freq_int_heat_tbl, *freq_int_ion_tbl, *freq_int_lya_tbl, *freq_int_heat_tbl_diff;
+    double *freq_int_ion_tbl_diff, *freq_int_lya_tbl_diff;
+
+    // helpers for the interpolation
+    float *inverse_diff;
+    float *inverse_val_box;
+    int *m_xHII_low_box;
+
+    // arrays for R-dependent prefactors
+    double *lya_flux_continuum_injected_prefactor, *lya_flux_continuum_injected_prefactor_MINI;
+    double *lyw_flux_prefactor, *lyw_flux_prefactor_MINI;
+    double *lya_flux_continuum_prefactor, *lya_flux_injected_prefactor;
+    double *lya_flux_continuum_prefactor_MINI, *lya_flux_injected_prefactor_MINI;
+
+    // array and floats required for the X-ray optical depth calculation
     double *ave_log10_MturnLW;
     double x_e_ave_zp;
     double Q_HI_zp;
+
+    // boolean to indicate whether there's enough light
     int NO_LIGHT;
 } RadiationFieldsSetup;
 

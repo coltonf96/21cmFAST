@@ -512,22 +512,27 @@ def setup_radiation_fields(
     *,
     hboxes: list[HaloBox],
     redshift: float,
+    previous_radiation_fields_setup: RadiationFieldsSetup | None = None,
     previous_spin_temp: TsBox | None = None,
 ) -> RadiationFieldsSetup:
     r"""
-    Set up arrays and quantities that are needed for calculating the radiation fields.
+    Set up arrays and quantities that are needed for calculating the radiation fields at this redshift.
 
     Parameters
     ----------
+    redshift: float
+        The redshift at which to compute the radiation fields.
     hboxes: Sequence of :class:`~HaloBox` instances
         This contains the list of Halobox instances which are used to create this source field
+    previous_radiation_fields_setup: :class:`~RadiationFieldsSetup` or None
+        An initialized object containing the required arrays for computing the radiation fields.
     previous_spin_temp: :class:`TsBox` or None
         The spin temperature box at the previous redshift. Becomes relevant only when redshift < Z_HEAT_MAX.
 
     Returns
     -------
-    :class:`~RadiationFields` :
-        An object containing x ray heating, ionisation, and lyman alpha rates.
+    :class:`~RadiationFieldsSetup` :
+        An object containing the required arrays for computing the radiation fields, at this redshift.
 
     Other Parameters
     ----------------
@@ -537,7 +542,13 @@ def setup_radiation_fields(
     z_halos = [hb.redshift for hb in hboxes]
     inputs = hboxes[0].inputs
 
-    radiation_fields_setup = RadiationFieldsSetup.new(redshift=redshift, inputs=inputs)
+    if previous_radiation_fields_setup is None:
+        previous_radiation_fields_setup = RadiationFieldsSetup.new(
+            redshift=redshift, inputs=inputs
+        )
+        previous_radiation_fields_setup._init_arrays()
+    else:
+        previous_radiation_fields_setup.redshift = redshift
 
     # set minimum R at cell size
     l_factor = (4 * np.pi / 3.0) ** (-1 / 3)
@@ -596,9 +607,6 @@ def setup_radiation_fields(
         #       https://github.com/21cmfast/21cmFAST/issues/659, where the global x_HI at zpp is taken from its history, as was evaluated by the reionization
         #       code.
         if inputs.astro_options.USE_MINI_HALOS:
-            # Initialize the memory, since we initialize the ave_log10_MturnLW array
-            # below before going to the C code
-            radiation_fields_setup._init_arrays()
             for i in range(inputs.astro_params.N_STEP_TS):
                 if zpp_avg[i] >= z_max:
                     # If the shell is beyond z_max, we compute the mean log10_Mcrit_MCG
@@ -611,8 +619,12 @@ def setup_radiation_fields(
                         J_LW_21=0.0,
                         v_cb=inputs.cosmo_tables.V_CB_AVG,
                     )
-                    radiation_fields_setup.ave_log10_MturnLW.value[i] = np.log10(
-                        np.max([mturn_MCG, inputs.astro_params.M_TURN_STELLAR_FEEDBACK])
+                    previous_radiation_fields_setup.ave_log10_MturnLW.value[i] = (
+                        np.log10(
+                            np.max(
+                                [mturn_MCG, inputs.astro_params.M_TURN_STELLAR_FEEDBACK]
+                            )
+                        )
                     )
                 else:
                     hbox_interp = interp_halo_boxes(
@@ -621,16 +633,17 @@ def setup_radiation_fields(
                         redshift=zpp_avg[i],
                         need_c=False,
                     )
-                    radiation_fields_setup.ave_log10_MturnLW.value[i] = (
+                    previous_radiation_fields_setup.ave_log10_MturnLW.value[i] = (
                         hbox_interp.log10_Mcrit_MCG_ave
                     )
 
-        radiation_fields_setup.compute(
+        previous_radiation_fields_setup.compute(
             redshift=redshift,
             previous_spin_temp=previous_spin_temp,
+            allow_already_computed=True,
         )
 
-    return radiation_fields_setup
+    return previous_radiation_fields_setup
 
 
 # NOTE: the current implementation of this box is very hacky, since I have trouble figuring out a way to _compute()
@@ -642,6 +655,7 @@ def compute_radiation_fields(
     *,
     hboxes: list[HaloBox],
     redshift: float,
+    radiation_fields_setup: RadiationFieldsSetup | None = None,
     previous_ionize_box: IonizedBox | None = None,
     perturbed_field: PerturbedField | None = None,
     previous_spin_temp: TsBox | None = None,
@@ -655,6 +669,10 @@ def compute_radiation_fields(
 
     Parameters
     ----------
+    redshift: float
+        The redshift at which to compute the radiation fields.
+    radiation_fields_setup: :class:`~RadiationFieldsSetup` or None
+        An object containing the required arrays for computing the radiation fields at this redshift.
     hboxes: Sequence of :class:`~HaloBox` instances
         This contains the list of Halobox instances which are used to create this source field
     previous_ionize_box: :class:`IonizedBox` or None
@@ -673,11 +691,15 @@ def compute_radiation_fields(
         See docs of :func:`initial_conditions` for more information.
     """
     # Setup the radiation fields
-    radiation_fields_setup = setup_radiation_fields(
-        redshift=redshift,
-        hboxes=hboxes,
-        previous_spin_temp=previous_spin_temp,
-    )
+    if radiation_fields_setup is None:
+        radiation_fields_setup = setup_radiation_fields(
+            redshift=redshift,
+            hboxes=hboxes,
+            previous_spin_temp=previous_spin_temp,
+        )
+        need_to_purge = True
+    else:
+        need_to_purge = False
 
     z_halos = [hb.redshift for hb in hboxes]
     inputs = hboxes[0].inputs
@@ -802,9 +824,10 @@ def compute_radiation_fields(
         for name, array in radiation_fields.arrays.items():
             setattr(radiation_fields, name, array.computed())
 
-    # Purge the radiation fields setup once we have the radiation fields
-    # NOTE: There is a need to purge radiation_fields_setup, since its arrays may have been exposed to C
-    radiation_fields_setup.purge(force=True)
+    if need_to_purge:
+        # Purge the radiation fields setup once we have the radiation fields
+        # NOTE: There is a need to purge radiation_fields_setup, since its arrays have been exposed to C
+        radiation_fields_setup.purge(force=True)
 
     return radiation_fields
 

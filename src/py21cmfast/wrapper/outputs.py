@@ -373,10 +373,7 @@ class OutputStruct(ABC):
     def ensure_input_computed(self, input_box: Self, load: bool = False) -> bool:
         """Ensure all the inputs have been computed."""
         # TODO: This is a hack to avoid having ValueError because the RadiationFieldSetup doesn't have any arrays if mini-halos are not used. This should be fixed in the future.
-        if input_box.dummy or (
-            isinstance(input_box, RadiationFieldsSetup)
-            and not self.astro_options.USE_MINI_HALOS
-        ):
+        if input_box.dummy:
             return True
 
         arrays = self.get_required_input_arrays(input_box)
@@ -1248,10 +1245,38 @@ class RadiationFieldsSetup(OutputStructZ):
     _meta = False
     _c_compute_function = lib.SetupRadiationFields
 
+    # R-dependent arrays which are set once
+    zpp_for_evolve_list = _arrayfield()
+    zpp_edge = _arrayfield()
+    dzpp_list = _arrayfield()
+    dtdz_list = _arrayfield()
+    R_values = _arrayfield()
+    # Frequency integral tables
+    freq_int_heat_tbl = _arrayfield()
+    freq_int_ion_tbl = _arrayfield()
+    freq_int_lya_tbl = _arrayfield()
+    freq_int_heat_tbl_diff = _arrayfield()
+    freq_int_ion_tbl_diff = _arrayfield()
+    freq_int_lya_tbl_diff = _arrayfield()
+    # helpers for the interpolation
+    inverse_diff = _arrayfield()
+    m_xHII_low_box = _arrayfield()
+    inverse_val_box = _arrayfield()
+    # arrays for R-dependent prefactors
+    lya_flux_continuum_prefactor = _arrayfield(optional=True)
+    lya_flux_injected_prefactor = _arrayfield(optional=True)
+    lya_flux_continuum_injected_prefactor = _arrayfield(optional=True)
+    lyw_flux_prefactor = _arrayfield(optional=True)
+    lyw_flux_prefactor_MINI = _arrayfield(optional=True)
+    lya_flux_continuum_prefactor_MINI = _arrayfield(optional=True)
+    lya_flux_injected_prefactor_MINI = _arrayfield(optional=True)
+    lya_flux_continuum_injected_prefactor_MINI = _arrayfield(optional=True)
+    # array and floats required for the X-ray optical depth calculation
+    ave_log10_MturnLW = _arrayfield(optional=True)
     Q_HI_zp: float = attrs.field(default=1.0)
     x_e_ave_zp: float = attrs.field(default=0.0)
+    # boolean to indicate whether there's enough light
     NO_LIGHT: bool = attrs.field(default=True)
-    ave_log10_MturnLW = _arrayfield(optional=True)
 
     @classmethod
     def new(cls, inputs: InputParameters, redshift: float, **kw) -> Self:
@@ -1269,7 +1294,75 @@ class RadiationFieldsSetup(OutputStructZ):
         All other parameters are passed through to the :class:`RadiationFieldsSetup`
         constructor.
         """
-        out = {}
+        x_int_NXHII = 14  # defined in elec_interp.h
+        shape = (inputs.simulation_options.HII_DIM,) * 2 + (
+            int(
+                inputs.simulation_options.NON_CUBIC_FACTOR
+                * inputs.simulation_options.HII_DIM
+            ),
+        )
+
+        out = {
+            "zpp_for_evolve_list": Array(
+                (inputs.astro_params.N_STEP_TS,), dtype=np.float64
+            ),
+            "zpp_edge": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
+            "dzpp_list": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
+            "dtdz_list": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
+            "R_values": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
+            "freq_int_heat_tbl": Array(
+                (x_int_NXHII, inputs.astro_params.N_STEP_TS), dtype=np.float64
+            ),
+            "freq_int_ion_tbl": Array(
+                (x_int_NXHII, inputs.astro_params.N_STEP_TS), dtype=np.float64
+            ),
+            "freq_int_lya_tbl": Array(
+                (x_int_NXHII, inputs.astro_params.N_STEP_TS), dtype=np.float64
+            ),
+            "freq_int_heat_tbl_diff": Array(
+                (x_int_NXHII, inputs.astro_params.N_STEP_TS), dtype=np.float64
+            ),
+            "freq_int_ion_tbl_diff": Array(
+                (x_int_NXHII, inputs.astro_params.N_STEP_TS), dtype=np.float64
+            ),
+            "freq_int_lya_tbl_diff": Array(
+                (x_int_NXHII, inputs.astro_params.N_STEP_TS), dtype=np.float64
+            ),
+            "inverse_diff": Array((x_int_NXHII,), dtype=np.float32),
+            "m_xHII_low_box": Array(shape, dtype=np.int32),
+            "inverse_val_box": Array(shape, dtype=np.float32),
+        }
+
+        if inputs.astro_options.USE_LYA_HEATING:
+            out["lya_flux_continuum_prefactor"] = Array(
+                (inputs.astro_params.N_STEP_TS,), dtype=np.float64
+            )
+            out["lya_flux_injected_prefactor"] = Array(
+                (inputs.astro_params.N_STEP_TS,), dtype=np.float64
+            )
+        else:
+            out["lya_flux_continuum_injected_prefactor"] = Array(
+                (inputs.astro_params.N_STEP_TS,), dtype=np.float64
+            )
+
+        if inputs.astro_options.USE_MINI_HALOS:
+            out["lyw_flux_prefactor"] = Array(
+                (inputs.astro_params.N_STEP_TS,), dtype=np.float64
+            )
+            out["lyw_flux_prefactor_MINI"] = Array(
+                (inputs.astro_params.N_STEP_TS,), dtype=np.float64
+            )
+            if inputs.astro_options.USE_LYA_HEATING:
+                out["lya_flux_continuum_prefactor_MINI"] = Array(
+                    (inputs.astro_params.N_STEP_TS,), dtype=np.float64
+                )
+                out["lya_flux_injected_prefactor_MINI"] = Array(
+                    (inputs.astro_params.N_STEP_TS,), dtype=np.float64
+                )
+            else:
+                out["lya_flux_continuum_injected_prefactor_MINI"] = Array(
+                    (inputs.astro_params.N_STEP_TS,), dtype=np.float64
+                )
 
         if inputs.astro_options.USE_MINI_HALOS:
             out["ave_log10_MturnLW"] = Array(
@@ -1395,7 +1488,44 @@ class RadiationFields(OutputStructZ):
             required += ["halo_sfr", "halo_xray"]
             if self.astro_options.USE_MINI_HALOS:
                 required += ["halo_sfr_mini"]
-        elif not isinstance(input_box, RadiationFieldsSetup):
+        elif isinstance(input_box, RadiationFieldsSetup):
+            required += [
+                "zpp_for_evolve_list",
+                "zpp_edge",
+                "dzpp_list",
+                "dtdz_list",
+                "R_values",
+                "freq_int_heat_tbl",
+                "freq_int_ion_tbl",
+                "freq_int_lya_tbl",
+                "freq_int_heat_tbl_diff",
+                "freq_int_ion_tbl_diff",
+                "freq_int_lya_tbl_diff",
+                "inverse_diff",
+                "m_xHII_low_box",
+                "inverse_val_box",
+            ]
+            if self.astro_options.USE_LYA_HEATING:
+                required += [
+                    "lya_flux_continuum_prefactor",
+                    "lya_flux_injected_prefactor",
+                ]
+            else:
+                required += ["lya_flux_continuum_injected_prefactor"]
+
+            if self.astro_options.USE_MINI_HALOS:
+                required += ["lyw_flux_prefactor", "lyw_flux_prefactor_MINI"]
+                if self.astro_options.USE_LYA_HEATING:
+                    required += [
+                        "lya_flux_continuum_prefactor_MINI",
+                        "lya_flux_injected_prefactor_MINI",
+                    ]
+                else:
+                    required += ["lya_flux_continuum_injected_prefactor_MINI"]
+
+            if self.astro_options.USE_MINI_HALOS:
+                required += ["ave_log10_MturnLW"]
+        else:
             raise ValueError(
                 f"{type(input_box)} is not an input required for RadiationFields!"
             )
