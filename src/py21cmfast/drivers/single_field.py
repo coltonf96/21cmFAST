@@ -35,11 +35,6 @@ from ._param_config import (
 
 logger = logging.getLogger(__name__)
 
-update_rad_fields_mode = {
-    "eval": 1,
-    "cleanup": 2,
-}
-
 
 @single_field_func
 @init_c_state(ps=True)
@@ -508,98 +503,6 @@ def interp_halo_boxes(
     return hbox_out
 
 
-# TODO: I gave this function an initializer decorator since it can call the C code, and if some curious users will try to
-# call it directly they will run into segfaul. Also here, I set the argument to be sigma=True, but this is an "overkill"
-# and should be set to broadcast_inputs=True once https://github.com/21cmfast/21cmFAST/issues/668 is fixed.
-# TODO: perturbed_field and initial_conditions should be removed from the function's signature once
-# https://github.com/21cmfast/21cmFAST/issues/668 is fixed.
-@init_c_state(sigma=True)
-def _interpolate_and_evaluate_radiation_fields(
-    redshift: float,
-    inputs: InputParameters,
-    hboxes: list[HaloBox],
-    interp_fields: list[str],
-    R_range: np.ndarray,
-    zpp_avg: np.ndarray,
-    z_max: float,
-    radiation_fields: RadiationFields,
-    radiation_fields_setup: RadiationFieldsSetup,
-    perturbed_field: PerturbedField | None = None,
-    previous_spin_temp: TsBox | None = None,
-    cleanup: bool | None = None,
-    R_star: float | None = None,
-) -> RadiationFields:
-    """
-    Interpolate the halo boxes and evaluate the radiation fields.
-
-    Parameters
-    ----------
-    redshift: float
-        The redshift at which to evaluate the radiation fields.
-    inputs: InputParameters
-        The input parameters specifying the run.
-    hboxes: list of HaloBox
-        The halo boxes to interpolate.
-    interp_fields : list[str]
-        The fields to interpolate and evaluate.
-    R_range: np.ndarray
-        The range of shell's radii to be integrated in order to evaluate the radiation fields.
-    zpp_avg: np.ndarray
-        The average redshifts for each shell.
-    z_max: float
-        The maximum redshift for the integration.
-        If a shell crosses this redshift, its contribution to the radiation fields is ignored.
-    previous_spin_temp: :class:`~TsBox`
-        The spin temperature box at the previous redshift. Becomes relevant only when redshift < Z_HEAT_MAX.
-    radiation_fields_setup: :class:`~RadiationFieldsSetup`
-        An object containing the setup for the radiation fields (R-independent quantities).
-    radiation_fields: :class:`~RadiationFields`
-        An object containing the radiation fields, before they had been computed.
-    R_star: float | None, optional
-        The comoving diffusion scale in the case of Lyman alpha multiple scattering.
-        Becomes relevant only when `LYA_MULTIPLE_SCATTERING` and `need_c` are set to True.
-
-    Returns
-    -------
-    :class:`~RadiationFields` :
-        An object containing the radiation fields, after they had been computed.
-    """
-    # NOTE: the following loop is done in reverse order (i.e. we go from the largest to the smallest shell),
-    # since the C code expects the smallest shell to be evaluated last.
-    # If we had reveresed the order (i.e. going from the smallest to the largest shell), we might have not
-    # entered the C code at the last iteration, due to the logic below.
-    # Note that we always enter the C code at the smallest shell, since if z_avg.min would have been larger than z_max,
-    # this would have been caught earlier by the need_c logic.
-    for i in range(inputs.astro_params.N_STEP_TS)[::-1]:
-        if zpp_avg[i] >= z_max:
-            logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
-        else:
-            R_inner = R_range[i - 1].to("Mpc").value if i > 0 else 0
-            R_outer = R_range[i].to("Mpc").value
-            hbox_interp = interp_halo_boxes(
-                halo_boxes=hboxes[::-1],
-                interp_fields=interp_fields,
-                redshift=zpp_avg[i],
-                need_c=True,
-            )
-            radiation_fields = radiation_fields.compute(
-                redshift=redshift,
-                halobox=hbox_interp,
-                R_inner=R_inner,
-                R_outer=R_outer,
-                R_ct=i,
-                R_star=R_star.to("Mpc").value,
-                perturbed_field=perturbed_field,
-                previous_spin_temp=previous_spin_temp,
-                radiation_fields_setup=radiation_fields_setup,
-                mode=update_rad_fields_mode["eval"],
-                cleanup=cleanup,
-                allow_already_computed=True,
-            )
-
-    return radiation_fields
-
-
 # TODO: The argument of the initializer below is set to sigma=True because sigma is needed for computing the global Nion
 # (for the NO_LIGHT condition), and also for computing the X-ray optical depth. I think we could relax the dependency of this
 # function on sigma once https://github.com/21cmfast/21cmFAST/issues/659 is addressed.
@@ -733,11 +636,8 @@ def setup_radiation_fields(
 # NOTE: the current implementation of this box is very hacky, since I have trouble figuring out a way to _compute()
 #   over multiple redshifts in a nice way using this wrapper.
 # TODO: if we move some code to jax or similar I think this would be one of the first candidates (just filling out some filtered grids)
-# TODO: I changed the argument of the initializer below to sigma=True (instead of broadcast_inputs=True). This is because we now call
-# SetupRadiationFields() in the C code that corresponds to this function. However, sigma is required only in the old Eulerian source models.
-# This should be changed back once https://github.com/21cmfast/21cmFAST/issues/668 is fixed.
 @single_field_func
-@init_c_state(sigma=True)
+@init_c_state(broadcast_inputs=True)
 def compute_radiation_fields(
     *,
     hboxes: list[HaloBox],
@@ -863,22 +763,38 @@ def compute_radiation_fields(
         if inputs.astro_options.USE_MINI_HALOS:
             interp_fields += ["halo_sfr_mini"]
 
-        # Interpolate the halo boxes and evaluate the radiation fields
-        radiation_fields = _interpolate_and_evaluate_radiation_fields(
-            redshift=redshift,
-            inputs=inputs,
-            hboxes=hboxes,
-            interp_fields=interp_fields,
-            R_range=R_range,
-            zpp_avg=zpp_avg,
-            z_max=z_max,
-            R_star=R_star,
-            perturbed_field=perturbed_field,
-            previous_spin_temp=previous_spin_temp,
-            radiation_fields_setup=radiation_fields_setup,
-            cleanup=cleanup,
-            radiation_fields=radiation_fields,
-        )
+        # For each shell, interpolate the halo boxes and evaluate the contribution to the radiation fields
+        # NOTE: the following loop is done in reverse order (i.e. we go from the largest to the smallest shell),
+        # since the C code expects the smallest shell to be evaluated last.
+        # If we had reveresed the order (i.e. going from the smallest to the largest shell), we might have not
+        # entered the C code at the last iteration, due to the logic below.
+        # Note that we always enter the C code at the smallest shell, since if z_avg.min would have been larger than z_max,
+        # this would have been caught earlier by the need_c logic.
+        for i in range(inputs.astro_params.N_STEP_TS)[::-1]:
+            if zpp_avg[i] >= z_max:
+                logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
+            else:
+                R_inner = R_range[i - 1].to("Mpc").value if i > 0 else 0
+                R_outer = R_range[i].to("Mpc").value
+                hbox_interp = interp_halo_boxes(
+                    halo_boxes=hboxes[::-1],
+                    interp_fields=interp_fields,
+                    redshift=zpp_avg[i],
+                    need_c=True,
+                )
+                radiation_fields = radiation_fields.compute(
+                    redshift=redshift,
+                    halobox=hbox_interp,
+                    R_inner=R_inner,
+                    R_outer=R_outer,
+                    R_ct=i,
+                    R_star=R_star.to("Mpc").value,
+                    perturbed_field=perturbed_field,
+                    previous_spin_temp=previous_spin_temp,
+                    radiation_fields_setup=radiation_fields_setup,
+                    cleanup=cleanup,
+                    allow_already_computed=True,
+                )
     else:
         # Sometimes we don't compute at all
         # (if the first zpp > z_max or there are no halos at max R)

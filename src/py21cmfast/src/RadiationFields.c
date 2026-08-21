@@ -871,15 +871,64 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
 }
 
 int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, double R_outer,
-                          int R_ct, double R_star, short mode, short cleanup,
-                          float perturbed_field_redshift, PerturbedField *perturbed_field,
-                          TsBox *previous_spin_temp, RadiationFieldsSetup *rad_setup,
-                          RadiationFields *radiation_fields) {
+                          int R_ct, double R_star, short cleanup, float perturbed_field_redshift,
+                          PerturbedField *perturbed_field, TsBox *previous_spin_temp,
+                          RadiationFieldsSetup *rad_setup, RadiationFields *radiation_fields) {
     int status;
     Try {  // This Try{} wraps the whole function.
-        // Multiply the radiation fields by constants and free remaining arrays
-        if (mode == UPDATE_RADIATION_FIELDS_CLEANUP) {
-            if (!rad_setup->NO_LIGHT) {
+        // If there are no stars, skip the calculation below
+        if (!rad_setup->NO_LIGHT) {
+            // NOTE: we assume that the first iteration corresponds to the largest shell.
+            // This is important because we must do some final steps after the last shell is
+            // done, see comment below
+            if (R_ct == astro_params_global->N_STEP_TS - 1) LOG_DEBUG("starting RadiationFields");
+
+            double sfr_avg, fsfr_avg, sfr_avg_mini = 0., fsfr_avg_mini = 0.;
+            double xray_avg, fxray_avg;
+            int filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING
+                                  ? FILTER_SPHERICAL_SHELL_MULTIPLE_SCATTERING
+                                  : FILTER_SPHERICAL_SHELL_STRAIGHT_LINE;
+
+            one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr, R_inner, R_outer,
+                               R_star, filter_type, &sfr_avg, &fsfr_avg);
+            one_annular_filter(halobox->halo_xray, radiation_fields->filtered_xray, R_inner,
+                               R_outer, R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &xray_avg,
+                               &fxray_avg);
+            if (astro_options_global->USE_MINI_HALOS) {
+                one_annular_filter(halobox->halo_sfr_mini, radiation_fields->filtered_sfr_mini,
+                                   R_inner, R_outer, R_star, filter_type, &sfr_avg_mini,
+                                   &fsfr_avg_mini);
+                // In case of multiple scattering and mini-halos, we need to filter the SFRD
+                // fields again for the the LW feedback, as these photons travel in straight
+                // lines
+                if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
+                    one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr_lw,
+                                       R_inner, R_outer, R_star,
+                                       FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &sfr_avg, &fsfr_avg);
+                    one_annular_filter(halobox->halo_sfr_mini,
+                                       radiation_fields->filtered_sfr_mini_lw, R_inner, R_outer,
+                                       R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &sfr_avg_mini,
+                                       &fsfr_avg_mini);
+                }
+            }
+
+            LOG_SUPER_DEBUG("R = [%8.3f - %8.3f] | mean filtered sfr  = %10.3e unfiltered %10.3e",
+                            R_inner, R_outer, fsfr_avg, sfr_avg);
+            LOG_ULTRA_DEBUG("mean filtered xray = %10.3e unfiltered %10.3e", fxray_avg, xray_avg);
+            if (astro_options_global->USE_MINI_HALOS) {
+                LOG_SUPER_DEBUG("MINI: filtered sfr %10.3e unfiltered %10.3e", fsfr_avg_mini,
+                                sfr_avg_mini);
+            }
+
+            // Given the filtered emissivities, we accumulate the contribution of this shell to
+            // the radiation fields
+            accumulate_radiation_shell(rad_setup, radiation_fields, R_ct);
+
+            // At the final shell, multiply by constants and free the remaining arrays
+            // NOTE: we assume that the last iteration corresponds to the smallest shell
+            // This is important in order to be consistent with the shell ordering we make
+            // in compute_radiation_fields in python
+            if (R_ct == 0) {
                 multiply_radiation_fields_by_constants(redshift, radiation_fields,
                                                        perturbed_field_redshift, perturbed_field,
                                                        previous_spin_temp);
@@ -889,88 +938,11 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
                     fftwf_cleanup_threads();
                     fftwf_cleanup();
                 }
-            }
-            if (cleanup) {
-                free_ts_global_arrays();
+                LOG_DEBUG("finished RadiationFields");
             }
         }
-
-        // If we are in the evaluation mode, we calculate the contribution from this shell to the
-        // radiation fields
-        else if (mode == UPDATE_RADIATION_FIELDS_EVAL) {
-            // If there are no stars, skip the calculation below
-            if (!rad_setup->NO_LIGHT) {
-                int filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING
-                                      ? FILTER_SPHERICAL_SHELL_MULTIPLE_SCATTERING
-                                      : FILTER_SPHERICAL_SHELL_STRAIGHT_LINE;
-
-                // NOTE: we assume that the first iteration corresponds to the largest shell.
-                // This is important because we must do some final steps after the last shell is
-                // done, see comment below
-                if (R_ct == astro_params_global->N_STEP_TS - 1)
-                    LOG_DEBUG("starting RadiationFields");
-
-                double sfr_avg, fsfr_avg, sfr_avg_mini = 0., fsfr_avg_mini = 0.;
-                double xray_avg, fxray_avg;
-                one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr, R_inner,
-                                   R_outer, R_star, filter_type, &sfr_avg, &fsfr_avg);
-                one_annular_filter(halobox->halo_xray, radiation_fields->filtered_xray, R_inner,
-                                   R_outer, R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &xray_avg,
-                                   &fxray_avg);
-                if (astro_options_global->USE_MINI_HALOS) {
-                    one_annular_filter(halobox->halo_sfr_mini, radiation_fields->filtered_sfr_mini,
-                                       R_inner, R_outer, R_star, filter_type, &sfr_avg_mini,
-                                       &fsfr_avg_mini);
-                    // In case of multiple scattering and mini-halos, we need to filter the SFRD
-                    // fields again for the the LW feedback, as these photons travel in straight
-                    // lines
-                    if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                        one_annular_filter(
-                            halobox->halo_sfr, radiation_fields->filtered_sfr_lw, R_inner, R_outer,
-                            R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &sfr_avg, &fsfr_avg);
-                        one_annular_filter(halobox->halo_sfr_mini,
-                                           radiation_fields->filtered_sfr_mini_lw, R_inner, R_outer,
-                                           R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE,
-                                           &sfr_avg_mini, &fsfr_avg_mini);
-                    }
-                }
-
-                LOG_SUPER_DEBUG(
-                    "R = [%8.3f - %8.3f] | mean filtered sfr  = %10.3e unfiltered %10.3e", R_inner,
-                    R_outer, fsfr_avg, sfr_avg);
-                LOG_ULTRA_DEBUG("mean filtered xray = %10.3e unfiltered %10.3e", fxray_avg,
-                                xray_avg);
-                if (astro_options_global->USE_MINI_HALOS) {
-                    LOG_SUPER_DEBUG("MINI: filtered sfr %10.3e unfiltered %10.3e", fsfr_avg_mini,
-                                    sfr_avg_mini);
-                }
-
-                // Given the filtered emissivities, we accumulate the contribution of this shell to
-                // the radiation fields
-                accumulate_radiation_shell(rad_setup, radiation_fields, R_ct);
-
-                // At the final shell, multiply by constants and free the remaining arrays
-                // NOTE: we assume that the last iteration corresponds to the smallest shell
-                // This is important to be consistent with the shell ordering we make in python
-                if (R_ct == 0) {
-                    multiply_radiation_fields_by_constants(redshift, radiation_fields,
-                                                           perturbed_field_redshift,
-                                                           perturbed_field, previous_spin_temp);
-                    // free fftwf only if we have a full box (with more than one cell)
-                    if (simulation_options_global->HII_DIM > 1) {
-                        fftwf_forget_wisdom();
-                        fftwf_cleanup_threads();
-                        fftwf_cleanup();
-                    }
-                    LOG_DEBUG("finished RadiationFields");
-                }
-            }
-            if (cleanup && R_ct == 0) {
-                free_ts_global_arrays();
-            }
-        } else {
-            LOG_ERROR("Invalid mode %d passed to UpdateRadiationFields", mode);
-            Throw(ValueError);
+        if (cleanup && R_ct == 0) {
+            free_ts_global_arrays();
         }
     }  // End of try
     Catch(status) { return (status); }
