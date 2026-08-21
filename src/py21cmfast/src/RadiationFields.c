@@ -904,8 +904,11 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
                                       ? FILTER_SPHERICAL_SHELL_MULTIPLE_SCATTERING
                                       : FILTER_SPHERICAL_SHELL_STRAIGHT_LINE;
 
-                // only print once, since this is called for every R
-                if (R_ct == 0) LOG_DEBUG("starting RadiationFields");
+                // NOTE: we assume that the first iteration corresponds to the largest shell.
+                // This is important because we must do some final steps after the last shell is
+                // done, see comment below
+                if (R_ct == astro_params_global->N_STEP_TS - 1)
+                    LOG_DEBUG("starting RadiationFields");
 
                 double sfr_avg, fsfr_avg, sfr_avg_mini = 0., fsfr_avg_mini = 0.;
                 double xray_avg, fxray_avg;
@@ -932,9 +935,6 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
                     }
                 }
 
-                if (R_ct == astro_params_global->N_STEP_TS - 1)
-                    LOG_DEBUG("finished RadiationFields");
-
                 LOG_SUPER_DEBUG(
                     "R = [%8.3f - %8.3f] | mean filtered sfr  = %10.3e unfiltered %10.3e", R_inner,
                     R_outer, fsfr_avg, sfr_avg);
@@ -948,6 +948,25 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
                 // Given the filtered emissivities, we accumulate the contribution of this shell to
                 // the radiation fields
                 accumulate_radiation_shell(rad_setup, radiation_fields, R_ct);
+
+                // At the final shell, multiply by constants and free the remaining arrays
+                // NOTE: we assume that the last iteration corresponds to the smallest shell
+                // This is important to be consistent with the shell ordering we make in python
+                if (R_ct == 0) {
+                    multiply_radiation_fields_by_constants(redshift, radiation_fields,
+                                                           perturbed_field_redshift,
+                                                           perturbed_field, previous_spin_temp);
+                    // free fftwf only if we have a full box (with more than one cell)
+                    if (simulation_options_global->HII_DIM > 1) {
+                        fftwf_forget_wisdom();
+                        fftwf_cleanup_threads();
+                        fftwf_cleanup();
+                    }
+                    LOG_DEBUG("finished RadiationFields");
+                }
+            }
+            if (cleanup && R_ct == 0) {
+                free_ts_global_arrays();
             }
         } else {
             LOG_ERROR("Invalid mode %d passed to UpdateRadiationFields", mode);

@@ -564,7 +564,13 @@ def _interpolate_and_evaluate_radiation_fields(
     :class:`~RadiationFields` :
         An object containing the radiation fields, after they had been computed.
     """
-    for i in range(inputs.astro_params.N_STEP_TS):
+    # NOTE: the following loop is done in reverse order (i.e. we go from the largest to the smallest shell),
+    # since the C code expects the smallest shell to be evaluated last.
+    # If we had reveresed the order (i.e. going from the smallest to the largest shell), we might have not
+    # entered the C code at the last iteration, due to the logic below.
+    # Note that we always enter the C code at the smallest shell, since if z_avg.min would have been larger than z_max,
+    # this would have been caught earlier by the need_c logic.
+    for i in range(inputs.astro_params.N_STEP_TS)[::-1]:
         if zpp_avg[i] >= z_max:
             logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
         else:
@@ -872,26 +878,6 @@ def compute_radiation_fields(
             radiation_fields_setup=radiation_fields_setup,
             cleanup=cleanup,
             radiation_fields=radiation_fields,
-        )
-
-        # Cleanup the radiation fields in the C code (with mode="cleanup"). This also multiplies the radiation fields by appropriate
-        # constants to make them physically meaningful quantities.
-        # TODO: this is a bit hacky. A better solution would be to have RadiationFieldsSetup that we have in the C code as an
-        #       OutputStructZ, but I suggeste to wait with this solution until https://github.com/21cmfast/21cmFAST/issues/668 is
-        #       fixed, as RadiationFieldsSetup would become much simpler
-        radiation_fields.compute(
-            redshift=redshift,
-            halobox=hboxes[0],  # dummy
-            R_inner=0.0,  # dummy
-            R_outer=0.0,  # dummy
-            R_ct=0,  # dummy
-            R_star=0.0,  # dummy
-            perturbed_field=perturbed_field,
-            previous_spin_temp=previous_spin_temp,
-            radiation_fields_setup=radiation_fields_setup,
-            mode=update_rad_fields_mode["cleanup"],
-            cleanup=cleanup,
-            allow_already_computed=True,
         )
     else:
         # Sometimes we don't compute at all
