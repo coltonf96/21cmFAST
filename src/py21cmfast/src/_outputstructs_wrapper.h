@@ -68,6 +68,13 @@ typedef struct RadiationFieldsSetup {
     // R-dependent arrays which are set once
     double *R_values, *dzpp_list, *dtdz_list, *zpp_for_evolve_list, *zpp_edge;
 
+    // Arrays for the filtered emissivity fields
+    float *filtered_sfr;
+    float *filtered_xray;
+    float *filtered_sfr_mini;
+    float *filtered_sfr_lw;
+    float *filtered_sfr_mini_lw;
+
     // frequency integral tables
     double *freq_int_heat_tbl, *freq_int_ion_tbl, *freq_int_lya_tbl, *freq_int_heat_tbl_diff;
     double *freq_int_ion_tbl_diff, *freq_int_lya_tbl_diff;
@@ -93,12 +100,6 @@ typedef struct RadiationFieldsSetup {
 } RadiationFieldsSetup;
 
 typedef struct RadiationFields {
-    float *filtered_sfr;
-    float *filtered_xray;
-    float *filtered_sfr_mini;
-    float *filtered_sfr_lw;
-    float *filtered_sfr_mini_lw;
-
     // TODO: these arrays are defined as double, but should be float - see
     // https://github.com/21cmfast/21cmFAST/issues/744
     double *xray_heating_rate;

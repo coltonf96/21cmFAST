@@ -488,21 +488,19 @@ void accumulate_radiation_shell(RadiationFieldsSetup *rad_setup, RadiationFields
         int num_R = astro_params_global->N_STEP_TS;
 #pragma omp for
         for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
-            sfr_term = radiation_fields->filtered_sfr[box_ct] * z_edge_factor;
+            sfr_term = rad_setup->filtered_sfr[box_ct] * z_edge_factor;
             // Minihalos and s->yr conversion are already included here
-            xray_sfr =
-                radiation_fields->filtered_xray[box_ct] * z_edge_factor * xray_R_factor * 1e38;
+            xray_sfr = rad_setup->filtered_xray[box_ct] * z_edge_factor * xray_R_factor * 1e38;
             if (astro_options_global->USE_MINI_HALOS &&
                 astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                sfr_term_lw = radiation_fields->filtered_sfr_lw[box_ct] * z_edge_factor;
+                sfr_term_lw = rad_setup->filtered_sfr_lw[box_ct] * z_edge_factor;
             } else {
                 sfr_term_lw = sfr_term;
             }
             if (astro_options_global->USE_MINI_HALOS) {
-                sfr_term_mini = radiation_fields->filtered_sfr_mini[box_ct] * z_edge_factor;
+                sfr_term_mini = rad_setup->filtered_sfr_mini[box_ct] * z_edge_factor;
                 if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                    sfr_term_mini_lw =
-                        radiation_fields->filtered_sfr_mini_lw[box_ct] * z_edge_factor;
+                    sfr_term_mini_lw = rad_setup->filtered_sfr_mini_lw[box_ct] * z_edge_factor;
                 } else {
                     sfr_term_mini_lw = sfr_term_mini;
                 }
@@ -557,11 +555,9 @@ void accumulate_radiation_shell(RadiationFieldsSetup *rad_setup, RadiationFields
    function does that multiplication.
 */
 void multiply_radiation_fields_by_constants(float redshift, RadiationFields *radiation_fields,
-                                            float perturbed_field_redshift,
                                             PerturbedField *perturbed_field,
                                             TsBox *previous_spin_temp) {
     double luminosity_converstion_factor, xray_prefactor, volunit_inv, Nb_zp, lya_star_prefactor;
-    double growth_factor_z, growth_factor_zp, inverse_growth_factor_z;
 
     if (fabs(astro_params_global->X_RAY_SPEC_INDEX - 1.0) < 1e-6) {
         luminosity_converstion_factor =
@@ -596,10 +592,6 @@ void multiply_radiation_fields_by_constants(float redshift, RadiationFields *rad
     lya_star_prefactor = physconst.c_cms / (4.0 * M_PI) * physconst.Msun / physconst.m_p *
                          (1 - 0.75 * cosmo_params_global->Y_He);
 
-    growth_factor_z = dicke(perturbed_field_redshift);
-    inverse_growth_factor_z = 1. / growth_factor_z;
-    growth_factor_zp = dicke(redshift);
-
     // converts the grid emissivity unit to per cm-3
     volunit_inv = pow(physconst.cm_per_Mpc, -3);
 
@@ -609,8 +601,7 @@ void multiply_radiation_fields_by_constants(float redshift, RadiationFields *rad
         double curr_delta, prev_xe;
 #pragma omp for
         for (box_ct = 0; box_ct < HII_TOT_NUM_PIXELS; box_ct++) {
-            curr_delta =
-                perturbed_field->density[box_ct] * growth_factor_zp * inverse_growth_factor_z;
+            curr_delta = perturbed_field->density[box_ct];
             prev_xe = previous_spin_temp->xray_ionised_fraction[box_ct];
             if (astro_options_global->USE_X_RAY_HEATING) {
                 radiation_fields->xray_heating_rate[box_ct] *=
@@ -635,10 +626,6 @@ void multiply_radiation_fields_by_constants(float redshift, RadiationFields *rad
     }
 }
 
-// NOTE: I've moved this to a function to help in simplicity, it is not clear whether it is faster
-//   to do all of one radii at once (more clustered FFT and larger thread blocks) or all of one box
-//   (better memory locality)
-// TODO: filter speed tests
 void one_annular_filter(float *input_box, float *output_box, double R_inner, double R_outer,
                         double R_star, int filter_type, double *u_avg, double *f_avg) {
     int i, j, k;
@@ -648,9 +635,9 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
     int box_dim[3] = {simulation_options_global->HII_DIM, simulation_options_global->HII_DIM,
                       HII_D_PARA};
 
-    fftwf_complex *unfiltered_box =
-        (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
-    fftwf_complex *filtered_box =
+    // This dummy box is used to store both filtered and unfiltered boxes, since we don't need to
+    // keep both at the same time
+    fftwf_complex *dummy_box =
         (fftwf_complex *)fftwf_malloc(sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
 
 #pragma omp parallel private(i, j, k) num_threads(simulation_options_global -> N_THREADS) \
@@ -665,7 +652,7 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
                     index_r = grid_index_general(i, j, k, box_dim);
                     index_f = grid_index_fftw_r(i, j, k, box_dim);
                     curr_val = input_box[index_r];
-                    *((float *)unfiltered_box + index_f) = curr_val;
+                    *((float *)dummy_box + index_f) = curr_val;
                     unfiltered_avg += curr_val;
                 }
             }
@@ -676,7 +663,7 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
         // Transform unfiltered box to k-space to prepare for filtering
         // this would normally only be done once but we're using a different redshift for each R now
         dft_r2c_cube(matter_options_global->USE_FFTW_WISDOM, simulation_options_global->HII_DIM,
-                     HII_D_PARA, simulation_options_global->N_THREADS, unfiltered_box);
+                     HII_D_PARA, simulation_options_global->N_THREADS, dummy_box);
 
 // remember to add the factor of VOLUME/TOT_NUM_PIXELS when converting from real space to k-space
 // Note: we will leave off factor of VOLUME, in anticipation of the inverse FFT below
@@ -684,22 +671,18 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
         {
 #pragma omp for
             for (ct = 0; ct < HII_KSPACE_NUM_PIXELS; ct++) {
-                unfiltered_box[ct] /= (float)HII_TOT_NUM_PIXELS;
+                dummy_box[ct] /= (float)HII_TOT_NUM_PIXELS;
             }
         }
 
-        // Smooth the density field, at the same time store the minimum and maximum densities for
-        // their usage in the interpolation tables copy over unfiltered box
-        memcpy(filtered_box, unfiltered_box, sizeof(fftwf_complex) * HII_KSPACE_NUM_PIXELS);
-
         // Don't filter on the cell scale
         if (R_inner > 0) {
-            filter_box(filtered_box, box_dim, filter_type, R_inner, R_outer, R_star);
+            filter_box(dummy_box, box_dim, filter_type, R_inner, R_outer, R_star);
         }
 
         // now fft back to real space
         dft_c2r_cube(matter_options_global->USE_FFTW_WISDOM, simulation_options_global->HII_DIM,
-                     HII_D_PARA, simulation_options_global->N_THREADS, filtered_box);
+                     HII_D_PARA, simulation_options_global->N_THREADS, dummy_box);
     }
 // copy over the values
 #pragma omp parallel private(i, j, k) num_threads(simulation_options_global -> N_THREADS) \
@@ -713,11 +696,7 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
                 for (k = 0; k < box_dim[2]; k++) {
                     index_r = grid_index_general(i, j, k, box_dim);
                     index_f = grid_index_fftw_r(i, j, k, box_dim);
-                    if (simulation_options_global->HII_DIM > 1) {
-                        curr_val = *((float *)filtered_box + index_f);
-                    } else {  // Just take the unfiltered box/cell if HII_DIM = 1
-                        curr_val = *((float *)unfiltered_box + index_f);
-                    }
+                    curr_val = *((float *)dummy_box + index_f);
                     // correct for aliasing in the filtering step
                     if (curr_val < 0.) curr_val = 0.;
 
@@ -734,14 +713,13 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
     *u_avg = unfiltered_avg;
     *f_avg = filtered_avg;
 
-    fftwf_free(filtered_box);
-    fftwf_free(unfiltered_box);
+    fftwf_free(dummy_box);
 }
 
 int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, double R_outer,
-                          int R_ct, double R_star, float perturbed_field_redshift,
-                          PerturbedField *perturbed_field, TsBox *previous_spin_temp,
-                          RadiationFieldsSetup *rad_setup, RadiationFields *radiation_fields) {
+                          int R_ct, double R_star, PerturbedField *perturbed_field,
+                          TsBox *previous_spin_temp, RadiationFieldsSetup *rad_setup,
+                          RadiationFields *radiation_fields) {
     int status;
     Try {  // This Try{} wraps the whole function.
         // NOTE: we assume that the first iteration corresponds to the largest shell.
@@ -755,22 +733,22 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
                               ? FILTER_SPHERICAL_SHELL_MULTIPLE_SCATTERING
                               : FILTER_SPHERICAL_SHELL_STRAIGHT_LINE;
 
-        one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr, R_inner, R_outer,
-                           R_star, filter_type, &sfr_avg, &fsfr_avg);
-        one_annular_filter(halobox->halo_xray, radiation_fields->filtered_xray, R_inner, R_outer,
-                           R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &xray_avg, &fxray_avg);
+        one_annular_filter(halobox->halo_sfr, rad_setup->filtered_sfr, R_inner, R_outer, R_star,
+                           filter_type, &sfr_avg, &fsfr_avg);
+        one_annular_filter(halobox->halo_xray, rad_setup->filtered_xray, R_inner, R_outer, R_star,
+                           FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &xray_avg, &fxray_avg);
         if (astro_options_global->USE_MINI_HALOS) {
-            one_annular_filter(halobox->halo_sfr_mini, radiation_fields->filtered_sfr_mini, R_inner,
+            one_annular_filter(halobox->halo_sfr_mini, rad_setup->filtered_sfr_mini, R_inner,
                                R_outer, R_star, filter_type, &sfr_avg_mini, &fsfr_avg_mini);
             // In case of multiple scattering and mini-halos, we need to filter the SFRD
             // fields again for the the LW feedback, as these photons travel in straight
             // lines
             if (astro_options_global->LYA_MULTIPLE_SCATTERING) {
-                one_annular_filter(halobox->halo_sfr, radiation_fields->filtered_sfr_lw, R_inner,
-                                   R_outer, R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &sfr_avg,
+                one_annular_filter(halobox->halo_sfr, rad_setup->filtered_sfr_lw, R_inner, R_outer,
+                                   R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE, &sfr_avg,
                                    &fsfr_avg);
-                one_annular_filter(halobox->halo_sfr_mini, radiation_fields->filtered_sfr_mini_lw,
-                                   R_inner, R_outer, R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE,
+                one_annular_filter(halobox->halo_sfr_mini, rad_setup->filtered_sfr_mini_lw, R_inner,
+                                   R_outer, R_star, FILTER_SPHERICAL_SHELL_STRAIGHT_LINE,
                                    &sfr_avg_mini, &fsfr_avg_mini);
             }
         }
@@ -792,8 +770,7 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
         // This is important in order to be consistent with the shell ordering we make
         // in compute_radiation_fields in python
         if (R_ct == 0) {
-            multiply_radiation_fields_by_constants(redshift, radiation_fields,
-                                                   perturbed_field_redshift, perturbed_field,
+            multiply_radiation_fields_by_constants(redshift, radiation_fields, perturbed_field,
                                                    previous_spin_temp);
             // free fftwf only if we have a full box (with more than one cell)
             if (simulation_options_global->HII_DIM > 1) {

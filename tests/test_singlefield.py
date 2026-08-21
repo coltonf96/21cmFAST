@@ -625,7 +625,6 @@ def test_radiation_fields_with_zero_sfr(
         USE_MINI_HALOS=use_mini_halos,
         RECOMB_MODEL="inhomogeneous",
         LYA_MULTIPLE_SCATTERING=lya_multiple_scattering,
-        SOURCE_MODEL="L-INTEGRAL",
     )
 
     hbox1 = HaloBox.new(redshift=redshift + 1, inputs=inputs)
@@ -652,13 +651,17 @@ def test_radiation_fields_with_zero_sfr(
         redshift=redshift,
     )
 
-    output_fields = ["filtered_sfr", "filtered_xray"]
+    output_fields = [
+        "xray_heating_rate",
+        "xray_ionization_rate",
+        "xray_lya_flux",
+        "lya_flux_continuum",
+        "lya_flux_injected",
+    ]
     if use_mini_halos:
         output_fields += [
-            "filtered_sfr_mini",
+            "lyw_flux",
         ]
-        if lya_multiple_scattering:
-            output_fields += ["filtered_sfr_lw", "filtered_sfr_mini_lw"]
 
     for field in output_fields:
         assert np.all(getattr(radiation_fields, field).value == 0.0)

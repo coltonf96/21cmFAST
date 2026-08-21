@@ -1251,6 +1251,12 @@ class RadiationFieldsSetup(OutputStructZ):
     dzpp_list = _arrayfield()
     dtdz_list = _arrayfield()
     R_values = _arrayfield()
+    # Arrays for the filtered emissivity fields
+    filtered_sfr = _arrayfield()
+    filtered_sfr_mini = _arrayfield(optional=True)
+    filtered_xray = _arrayfield()
+    filtered_sfr_lw = _arrayfield(optional=True)
+    filtered_sfr_mini_lw = _arrayfield(optional=True)
     # Frequency integral tables
     freq_int_heat_tbl = _arrayfield()
     freq_int_ion_tbl = _arrayfield()
@@ -1331,7 +1337,15 @@ class RadiationFieldsSetup(OutputStructZ):
             "inverse_diff": Array((x_int_NXHII,), dtype=np.float32),
             "m_xHII_low_box": Array(shape, dtype=np.int32),
             "inverse_val_box": Array(shape, dtype=np.float32),
+            "filtered_sfr": Array(shape, dtype=np.float32),
+            "filtered_xray": Array(shape, dtype=np.float32),
         }
+
+        if inputs.astro_options.USE_MINI_HALOS:
+            out["filtered_sfr_mini"] = Array(shape, dtype=np.float32)
+            if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
+                out["filtered_sfr_lw"] = Array(shape, dtype=np.float32)
+                out["filtered_sfr_mini_lw"] = Array(shape, dtype=np.float32)
 
         if inputs.astro_options.USE_LYA_HEATING:
             out["lya_flux_continuum_prefactor"] = Array(
@@ -1410,11 +1424,6 @@ class RadiationFields(OutputStructZ):
     _meta = False
     _c_compute_function = lib.UpdateRadiationFields
 
-    filtered_sfr = _arrayfield()
-    filtered_sfr_mini = _arrayfield(optional=True)
-    filtered_xray = _arrayfield()
-    filtered_sfr_lw = _arrayfield(optional=True)
-    filtered_sfr_mini_lw = _arrayfield(optional=True)
     xray_heating_rate = _arrayfield(optional=True)
     xray_ionization_rate = _arrayfield()
     xray_lya_flux = _arrayfield()
@@ -1447,19 +1456,13 @@ class RadiationFields(OutputStructZ):
             ),
         )
 
-        # TODO: the 3D arrays below are defined as np.float64, but should be np.float32 - see https://github.com/21cmfast/21cmFAST/issues/744
+        # TODO: the arrays below are defined as np.float64, but should be np.float32 - see https://github.com/21cmfast/21cmFAST/issues/744
         out = {
-            "filtered_sfr": Array(shape, dtype=np.float32),
-            "filtered_xray": Array(shape, dtype=np.float32),
             "xray_ionization_rate": Array(shape, dtype=np.float64),
             "xray_lya_flux": Array(shape, dtype=np.float64),
         }
         if inputs.astro_options.USE_MINI_HALOS:
-            out["filtered_sfr_mini"] = Array(shape, dtype=np.float32)
             out["lyw_flux"] = Array(shape, dtype=np.float64)
-            if inputs.astro_options.LYA_MULTIPLE_SCATTERING:
-                out["filtered_sfr_lw"] = Array(shape, dtype=np.float32)
-                out["filtered_sfr_mini_lw"] = Array(shape, dtype=np.float32)
 
         if inputs.astro_options.USE_X_RAY_HEATING:
             out["xray_heating_rate"] = Array(shape, dtype=np.float64)
@@ -1504,7 +1507,14 @@ class RadiationFields(OutputStructZ):
                 "inverse_diff",
                 "m_xHII_low_box",
                 "inverse_val_box",
+                "filtered_sfr",
+                "filtered_xray",
             ]
+            if self.astro_options.USE_MINI_HALOS:
+                required += ["filtered_sfr_mini"]
+                if self.astro_options.LYA_MULTIPLE_SCATTERING:
+                    required += ["filtered_sfr_lw", "filtered_sfr_mini_lw"]
+
             if self.astro_options.USE_LYA_HEATING:
                 required += [
                     "lya_flux_continuum_prefactor",
@@ -1555,7 +1565,6 @@ class RadiationFields(OutputStructZ):
             R_outer,
             R_ct,
             R_star,
-            perturbed_field.redshift,
             perturbed_field,
             previous_spin_temp,
             radiation_fields_setup,
