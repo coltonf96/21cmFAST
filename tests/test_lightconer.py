@@ -3,6 +3,7 @@
 import re
 from dataclasses import dataclass
 
+import deprecation
 import numpy as np
 import pytest
 from astropy import units as un
@@ -166,6 +167,28 @@ def test_equal_cdist_endpoint():
         resolution=res,
     )
     assert np.isclose(lc.lc_distances.max(), d1, atol=d1 / 20)
+
+
+def test_with_equal_cdist_slices_deprecated_warning():
+    """Test that with_equal_cdist_slices raises a deprecation warning."""
+    with pytest.warns(
+        deprecation.DeprecatedWarning, match="with_equal_cdist_slices is deprecated"
+    ):
+        lcn.RectilinearLightconer.with_equal_cdist_slices(
+            min_redshift=6.0,
+            max_redshift=7.0,
+            resolution=2 * un.Mpc,
+        )
+
+
+@deprecation.fail_if_not_removed
+def test_with_equal_cdist_slices_is_removed():
+    """Fails when removed_in version is reached, reminding you to delete with_equal_cdist_slices."""
+    lcn.RectilinearLightconer.with_equal_cdist_slices(
+        min_redshift=6.0,
+        max_redshift=7.0,
+        resolution=2 * un.Mpc,
+    )
 
 
 def test_angular_lightconer_bad_instantiation():
