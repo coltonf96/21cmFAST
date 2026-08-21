@@ -549,6 +549,7 @@ def setup_radiation_fields(
         previous_radiation_fields_setup._init_arrays()
     else:
         previous_radiation_fields_setup.redshift = redshift
+        previous_radiation_fields_setup.dummy = False
 
     # set minimum R at cell size
     l_factor = (4 * np.pi / 3.0) ** (-1 / 3)

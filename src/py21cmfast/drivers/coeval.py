@@ -776,7 +776,7 @@ def _redshift_loop_generator(
     this_radiation_fields = None
     if inputs.astro_options.USE_TS_FLUCT:
         this_radiation_fields_setup = RadiationFieldsSetup.new(
-            redshift=-1.0, inputs=inputs
+            redshift=-1.0, inputs=inputs, dummy=True
         )
         # For efficiency, allocate memory once per simulation
         this_radiation_fields_setup._init_arrays()
