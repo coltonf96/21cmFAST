@@ -659,7 +659,6 @@ def compute_radiation_fields(
     previous_ionize_box: IonizedBox | None = None,
     perturbed_field: PerturbedField | None = None,
     previous_spin_temp: TsBox | None = None,
-    cleanup: bool = True,
 ) -> RadiationFields:
     r"""
     Compute the radiation fields, given the past emissivity fields.
@@ -748,7 +747,9 @@ def compute_radiation_fields(
     # Let's figure out if we really need to go through the C code
     sfr_allzero = np.all([np.all(hbox.get("halo_sfr") == 0) for hbox in hboxes])
     lowest_shell_above_zmax = zpp_avg.min() >= z_max
-    need_c = not (sfr_allzero or lowest_shell_above_zmax)
+    need_c = not (
+        sfr_allzero or lowest_shell_above_zmax or radiation_fields_setup.NO_LIGHT
+    )
 
     if need_c:
         # Compute the comoving diffusion scale in the case of Lyman alpha multiple scattering
@@ -814,7 +815,6 @@ def compute_radiation_fields(
                     perturbed_field=perturbed_field,
                     previous_spin_temp=previous_spin_temp,
                     radiation_fields_setup=radiation_fields_setup,
-                    cleanup=cleanup,
                     allow_already_computed=True,
                 )
     else:
