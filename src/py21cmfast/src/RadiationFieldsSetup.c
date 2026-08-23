@@ -17,8 +17,7 @@ Module for setting up the radiation fields in 21cmFAST.
 // This function should construct all the tables which depend on R
 void setup_z_edges(double zp, RadiationFieldsSetup *rad_setup) {
     double R, R_factor;
-    double zpp, prev_zpp, prev_R;
-    double dzpp_for_evolve;
+    double prev_zpp, prev_R;
     int R_ct;
 
     if (simulation_options_global->HII_DIM == 1) {
@@ -33,34 +32,24 @@ void setup_z_edges(double zp, RadiationFieldsSetup *rad_setup) {
     R_factor = pow(astro_params_global->R_MAX_TS / R, 1 / ((float)astro_params_global->N_STEP_TS));
 
     for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
-        rad_setup->R_values[R_ct] = R;
+        // rad_setup->R_values[R_ct] = R;
         if (R_ct == 0) {
             prev_zpp = zp;
             prev_R = 0;
         } else {
-            prev_zpp = rad_setup->zpp_edge[R_ct - 1];
+            prev_zpp = rad_setup->zpp_edges[R_ct - 1];
             prev_R = rad_setup->R_values[R_ct - 1];
         }
-
         // cell size
-        rad_setup->zpp_edge[R_ct] =
+        rad_setup->zpp_edges[R_ct] =
             prev_zpp - (rad_setup->R_values[R_ct] - prev_R) * physconst.cm_per_Mpc / drdz(prev_zpp);
         // average redshift value of shell: z'' + 0.5 * dz''
-        zpp = (rad_setup->zpp_edge[R_ct] + prev_zpp) * 0.5;
-
-        rad_setup->zpp_for_evolve_list[R_ct] = zpp;
-        if (R_ct == 0) {
-            dzpp_for_evolve = zp - rad_setup->zpp_edge[0];
-        } else {
-            dzpp_for_evolve = rad_setup->zpp_edge[R_ct - 1] - rad_setup->zpp_edge[R_ct];
-        }
-        rad_setup->dzpp_list[R_ct] = dzpp_for_evolve;  // z bin width
-        rad_setup->dtdz_list[R_ct] = dtdz(zpp);        // dt/dz''
+        rad_setup->zpp_avg[R_ct] = (rad_setup->zpp_edges[R_ct] + prev_zpp) * 0.5;
 
         R *= R_factor;
     }
     LOG_DEBUG("%d steps R range [%.2e,%.2e] z range [%.2f,%.2f]", R_ct, rad_setup->R_values[0],
-              rad_setup->R_values[R_ct - 1], zp, rad_setup->zpp_edge[R_ct - 1]);
+              rad_setup->R_values[R_ct - 1], zp, rad_setup->zpp_edges[R_ct - 1]);
 }
 
 void calculate_spectral_factors(double zp, RadiationFieldsSetup *rad_setup) {
@@ -83,7 +72,7 @@ void calculate_spectral_factors(double zp, RadiationFieldsSetup *rad_setup) {
     double sum_lynto2_prev = 0., sum_lynto2_prev_MINI = 0.;
     double prev_zpp = 0;
     for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
-        zpp = rad_setup->zpp_for_evolve_list[R_ct];
+        zpp = rad_setup->zpp_avg[R_ct];
         // We need to set up prefactors for how much of Lyman-N radiation is recycled to Lyman-alpha
         sum_lyLW_val = 0.;
         sum_lyLW_val_MINI = 0.;
@@ -232,14 +221,14 @@ void fill_freqint_tables(double zp, RadiationFieldsSetup *rad_setup, ScalingCons
             //      homogeneous (feedback-free) ACG turnover mass. It is important to remember to
             //      fix this when issue #470 is fixed!
             if (astro_options_global->USE_MINI_HALOS) {
-                lower_int_limit = fmax(
-                    nu_tau_one_MINI(zp, rad_setup->zpp_for_evolve_list[R_ct], rad_setup->x_e_ave_zp,
-                                    rad_setup->Q_HI_zp, log10(sc->mturn_acg_homogeneous),
-                                    rad_setup->ave_log10_MturnLW[R_ct], sc),
-                    (astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz);
+                lower_int_limit =
+                    fmax(nu_tau_one_MINI(zp, rad_setup->zpp_avg[R_ct], rad_setup->x_e_ave_zp,
+                                         rad_setup->Q_HI_zp, log10(sc->mturn_acg_homogeneous),
+                                         rad_setup->ave_log10_MturnLW[R_ct], sc),
+                         (astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz);
             } else {
                 lower_int_limit =
-                    fmax(nu_tau_one(zp, rad_setup->zpp_for_evolve_list[R_ct], rad_setup->x_e_ave_zp,
+                    fmax(nu_tau_one(zp, rad_setup->zpp_avg[R_ct], rad_setup->x_e_ave_zp,
                                     rad_setup->Q_HI_zp, log10(sc->mturn_acg_homogeneous), sc),
                          (astro_params_global->NU_X_THRESH) * physconst.eV_to_Hz);
             }
@@ -266,8 +255,7 @@ void fill_freqint_tables(double zp, RadiationFieldsSetup *rad_setup, ScalingCons
                 }
             }
             LOG_ULTRA_DEBUG("Nu Integrals || R_ct %d R %.2e zpp %.2f nu_min %.2e", R_ct,
-                            rad_setup->R_values[R_ct], rad_setup->zpp_for_evolve_list[R_ct],
-                            lower_int_limit);
+                            rad_setup->R_values[R_ct], rad_setup->zpp_avg[R_ct], lower_int_limit);
             LOG_ULTRA_DEBUG("heat[x_e=0] %.2e ion[x_e=0] %.2e lya[x_e=0] %.2e",
                             rad_setup->freq_int_heat_tbl[freq_index(0, R_ct, num_R)],
                             rad_setup->freq_int_ion_tbl[freq_index(0, R_ct, num_R)],
@@ -310,8 +298,7 @@ int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
         determine_zpp_min = zp * 0.999;
         // NOTE: must be called after setup_z_edges for this line
-        determine_zpp_max =
-            rad_setup->zpp_for_evolve_list[astro_params_global->N_STEP_TS - 1] * 1.001;
+        determine_zpp_max = rad_setup->zpp_avg[astro_params_global->N_STEP_TS - 1] * 1.001;
 
         // We need the tables for the frequency integrals & mean fixing
         // NOTE: These global tables confuse me, we do ~400 (x50 for mini) integrals to build the

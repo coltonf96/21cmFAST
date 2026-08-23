@@ -9,6 +9,7 @@ This includes X-ray heating rate, photoionization rate, and Lyman-alpha flux.
 
 #include "Constants.h"
 #include "cexcept.h"
+#include "cosmology.h"
 #include "debugging.h"
 #include "dft.h"
 #include "exceptions.h"
@@ -24,17 +25,21 @@ This includes X-ray heating rate, photoionization rate, and Lyman-alpha flux.
    contribution from a single redshift shell (zpp) and adds it to the total radiation fields. This
    is done by filling the arrays in RadiationFields.
 */
-void accumulate_radiation_shell(RadiationFieldsSetup *rad_setup, RadiationFields *radiation_fields,
-                                int R_ct) {
+void accumulate_radiation_shell(float redshift, RadiationFieldsSetup *rad_setup,
+                                RadiationFields *radiation_fields, int R_ct) {
     index_huge box_ct;
-    double z_edge_factor, dzpp_for_evolve, zpp, xray_R_factor;
+    double z_edge_factor, dzpp, zpp, xray_R_factor;
     double lya_flux_continuum_prefactor_mini = 0., lya_flux_injected_prefactor_mini = 0.,
            lya_flux_continuum_injected_prefactor_mini = 0.;
 
-    dzpp_for_evolve = rad_setup->dzpp_list[R_ct];
-    zpp = rad_setup->zpp_for_evolve_list[R_ct];
+    zpp = rad_setup->zpp_avg[R_ct];
+    if (R_ct == 0) {
+        dzpp = redshift - rad_setup->zpp_edges[0];
+    } else {
+        dzpp = rad_setup->zpp_edges[R_ct - 1] - rad_setup->zpp_edges[R_ct];
+    }
     // dtdz'' dz'' -> dR for the radius sum (c included in constants)
-    z_edge_factor = fabs(dzpp_for_evolve * rad_setup->dtdz_list[R_ct]);
+    z_edge_factor = fabs(dzpp * dtdz(zpp));
 
     xray_R_factor = pow(1 + zpp, -(astro_params_global->X_RAY_SPEC_INDEX));
 
@@ -340,7 +345,7 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
 
         // Given the filtered emissivities, we accumulate the contribution of this shell to
         // the radiation fields
-        accumulate_radiation_shell(rad_setup, radiation_fields, R_ct);
+        accumulate_radiation_shell(redshift, rad_setup, radiation_fields, R_ct);
 
         // At the final shell, multiply by constants and free the remaining arrays
         // NOTE: we assume that the last iteration corresponds to the smallest shell

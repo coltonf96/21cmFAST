@@ -11,7 +11,6 @@ import warnings
 import numpy as np
 from astropy import constants
 from astropy import units as un
-from astropy.cosmology import z_at_value
 
 from ..wrapper.arrays import Array
 from ..wrapper.inputs import InputParameters
@@ -512,7 +511,7 @@ def setup_radiation_fields(
     *,
     hboxes: list[HaloBox],
     redshift: float,
-    previous_radiation_fields_setup: RadiationFieldsSetup | None = None,
+    previous_rad_setup: RadiationFieldsSetup | None = None,
     previous_spin_temp: TsBox | None = None,
 ) -> RadiationFieldsSetup:
     r"""
@@ -524,7 +523,7 @@ def setup_radiation_fields(
         The redshift at which to compute the radiation fields.
     hboxes: Sequence of :class:`~HaloBox` instances
         This contains the list of Halobox instances which are used to create this source field
-    previous_radiation_fields_setup: :class:`~RadiationFieldsSetup` or None
+    previous_rad_setup: :class:`~RadiationFieldsSetup` or None
         An initialized object containing the required arrays for computing the radiation fields.
     previous_spin_temp: :class:`TsBox` or None
         The spin temperature box at the previous redshift. Becomes relevant only when redshift < Z_HEAT_MAX.
@@ -539,114 +538,84 @@ def setup_radiation_fields(
     regenerate, write, cache:
         See docs of :func:`initial_conditions` for more information.
     """
-    z_halos = [hb.redshift for hb in hboxes]
     inputs = hboxes[0].inputs
 
-    if previous_radiation_fields_setup is None:
-        previous_radiation_fields_setup = RadiationFieldsSetup.new(
-            redshift=redshift, inputs=inputs
-        )
+    if previous_rad_setup is None:
+        rad_setup = RadiationFieldsSetup.new(redshift=redshift, inputs=inputs)
     else:
-        previous_radiation_fields_setup.redshift = redshift
-        previous_radiation_fields_setup.dummy = False
+        rad_setup = previous_rad_setup
+        rad_setup.redshift = redshift
+        rad_setup.dummy = False
 
     # Make sure the arrays are initialized
-    previous_radiation_fields_setup._init_arrays()
+    rad_setup._init_arrays()
 
-    # set minimum R at cell size
-    l_factor = (4 * np.pi / 3.0) ** (-1 / 3)
-    if inputs.simulation_options.HII_DIM == 1:
-        # If HII_DIM=1 (happens when we run_global_evolution), we take a typical cell size of 1.5Mpc,
-        # just to for setting the z'' array (note that filtering won't be done on a box with a single cell)
-        R_min = 1.5 * l_factor
-    else:
-        R_min = (
-            inputs.simulation_options.BOX_LEN
-            / inputs.simulation_options.HII_DIM
-            * l_factor
-        )
-    z_max = min(max(z_halos), inputs.simulation_options.Z_HEAT_MAX)
-
-    # now we need to find the closest halo box to the redshift of the shell
-    cosmo_ap = inputs.cosmo_params.cosmo
-    cmd_zp = cosmo_ap.comoving_distance(redshift)
-    R_steps = np.arange(0, inputs.astro_params.N_STEP_TS)
-    R_factor = (inputs.astro_params.R_MAX_TS / R_min) ** (
-        R_steps / inputs.astro_params.N_STEP_TS
+    rad_setup.hbox_redshifts = [hb.redshift for hb in hboxes]
+    rad_setup.source_z_max = min(
+        max(rad_setup.hbox_redshifts), inputs.simulation_options.Z_HEAT_MAX
     )
-    R_range = un.Mpc * R_min * R_factor
-    cmd_edges = cmd_zp + R_range  # comoving distance edges
-    # Get the edges of the shells
-    zmin = z_at_value(cosmo_ap.comoving_distance, cmd_edges.min()).value
-    zmax = z_at_value(cosmo_ap.comoving_distance, cmd_edges.max()).value
-    zgrid = np.logspace(np.log10(zmin), np.log10(zmax), 100)
-    dgrid = cosmo_ap.comoving_distance(zgrid)
-    zpp_edges = np.interp(cmd_edges.value, dgrid.value, zgrid)
-    # the `average` redshift of the shell is the average of the
-    # inner and outer redshifts (following the C code)
-    zpp_avg = zpp_edges - np.diff(np.insert(zpp_edges, 0, redshift)) / 2
+
+    # set up the shells for the calculation of the radiation fields
+    rad_setup.setup_shells(inputs=inputs, redshift=redshift)
 
     # Let's figure out if we really need to go through the C code
     sfr_allzero = np.all([np.all(hbox.get("halo_sfr") == 0) for hbox in hboxes])
-    lowest_shell_above_zmax = zpp_avg.min() >= z_max
+    lowest_shell_above_zmax = rad_setup.zpp_avg.value.min() >= rad_setup.source_z_max
     need_c = not (sfr_allzero or lowest_shell_above_zmax)
 
     if need_c:
-        # Get log10_Mcrit_MCG_ave for each shell
-        # TODO: The reason why this field is evaluated separately is because it is already required in SetupRadiationFields() in the C code,
-        # as it sets rad_setup->ave_log10_MturnLW. This array is needed (specifically, in global_reion_properties) for two purposese:
-        #   (1) For computing the global Nion, which is used for the NO_LIGHT condition. Here however, note that only the first entry of
-        #       ave_log10_MturnLW is needed, namely for that computation we care about only the CURRENT global turnover mass, not its history.
-        #       This usage therefore does not require the full global array as we compute below.
-        #   (2) For computing the lower limit of the frequency integral (it is used in nu_tau_one_MINI, which is called by fill_freqint_tables).
-        #       Here, we ought to have the full history of the global turnover mass, since that lower limit depends on the frequency in which
-        #       the X-ray optical depth is unity. In order to compute the X-ray optical depth, we need to integrate over the history of the global
-        #       neutral volume filling factor, which is currently approximated by the global Nion (the code does something like x_HI = 1 - Nion/(1-x_e)).
-        #       Hence, the full history of the global turnover mass is needed in order to detemrine the history of x_HI, which is integrated in order to
-        #       get the X-ray optical depth, which is required for setting the lower limit for the frequency integral. In that context, note that the code
-        #       actually uses the global turnover mass at zpp (the redshift that corresponds to the shell), and not at zhat (the dummy integration variable
-        #       in the X-ray optical depth integral), which I believe is a MISTAKE/undocmented approximation. Anyway, the necessity for the full history of
-        #       the global turnover mass for setting the lower limit (as well evaluating the global turnover mass at zpp) should be fixed when addressing
-        #       https://github.com/21cmfast/21cmFAST/issues/659, where the global x_HI at zpp is taken from its history, as was evaluated by the reionization
-        #       code.
+        # TODO: the whole code below is only required if we use mini-halos. It could be removed though, see comment below
         if inputs.astro_options.USE_MINI_HALOS:
+            # Get log10_Mcrit_MCG_ave for each shell
+            # TODO: The reason why this field is evaluated separately is because it is already required in SetupRadiationFields() in the C code,
+            # as it sets rad_setup->ave_log10_MturnLW. This array is needed (specifically, in global_reion_properties) for two purposese:
+            #   (1) For computing the global Nion, which is used for the NO_LIGHT condition. Here however, note that only the first entry of
+            #       ave_log10_MturnLW is needed, namely for that computation we care about only the CURRENT global turnover mass, not its history.
+            #       This usage therefore does not require the full global array as we compute below.
+            #   (2) For computing the lower limit of the frequency integral (it is used in nu_tau_one_MINI, which is called by fill_freqint_tables).
+            #       Here, we ought to have the full history of the global turnover mass, since that lower limit depends on the frequency in which
+            #       the X-ray optical depth is unity. In order to compute the X-ray optical depth, we need to integrate over the history of the global
+            #       neutral volume filling factor, which is currently approximated by the global Nion (the code does something like x_HI = 1 - Nion/(1-x_e)).
+            #       Hence, the full history of the global turnover mass is needed in order to detemrine the history of x_HI, which is integrated in order to
+            #       get the X-ray optical depth, which is required for setting the lower limit for the frequency integral. In that context, note that the code
+            #       actually uses the global turnover mass at zpp (the redshift that corresponds to the shell), and not at zhat (the dummy integration variable
+            #       in the X-ray optical depth integral), which I believe is a MISTAKE/undocmented approximation. Anyway, the necessity for the full history of
+            #       the global turnover mass for setting the lower limit (as well evaluating the global turnover mass at zpp) should be fixed when addressing
+            #       https://github.com/21cmfast/21cmFAST/issues/659, where the global x_HI at zpp is taken from its history, as was evaluated by the reionization
+            #       code.
             for i in range(inputs.astro_params.N_STEP_TS):
-                if zpp_avg[i] >= z_max:
-                    # If the shell is beyond z_max, we compute the mean log10_Mcrit_MCG
+                if rad_setup.zpp_avg.value[i] >= rad_setup.source_z_max:
+                    # If the shell is beyond source_z_max, we compute the mean log10_Mcrit_MCG
                     # under the assumption of zero LW flux a constant v_cb, and no reionization feedback
                     from ..wrapper import cfuncs
 
                     mturn_MCG = cfuncs.get_molecular_cooling_threshold_with_feedbacks(
                         inputs=inputs,
-                        redshifts=zpp_avg[i],
+                        redshifts=rad_setup.zpp_avg.value[i],
                         J_LW_21=0.0,
                         v_cb=inputs.cosmo_tables.V_CB_AVG,
                     )
-                    previous_radiation_fields_setup.ave_log10_MturnLW.value[i] = (
-                        np.log10(
-                            np.max(
-                                [mturn_MCG, inputs.astro_params.M_TURN_STELLAR_FEEDBACK]
-                            )
-                        )
+                    rad_setup.ave_log10_MturnLW.value[i] = np.log10(
+                        np.max([mturn_MCG, inputs.astro_params.M_TURN_STELLAR_FEEDBACK])
                     )
                 else:
                     hbox_interp = interp_halo_boxes(
                         halo_boxes=hboxes[::-1],
                         interp_fields=["log10_Mcrit_MCG_ave"],
-                        redshift=zpp_avg[i],
+                        redshift=rad_setup.zpp_avg.value[i],
                         need_c=False,
                     )
-                    previous_radiation_fields_setup.ave_log10_MturnLW.value[i] = (
+                    rad_setup.ave_log10_MturnLW.value[i] = (
                         hbox_interp.log10_Mcrit_MCG_ave
                     )
 
-        previous_radiation_fields_setup.compute(
+        rad_setup.compute(
             redshift=redshift,
             previous_spin_temp=previous_spin_temp,
             allow_already_computed=True,
         )
 
-    return previous_radiation_fields_setup
+    return rad_setup
 
 
 # NOTE: the current implementation of this box is very hacky, since I have trouble figuring out a way to _compute()
@@ -658,7 +627,7 @@ def compute_radiation_fields(
     *,
     hboxes: list[HaloBox],
     redshift: float,
-    radiation_fields_setup: RadiationFieldsSetup | None = None,
+    rad_setup: RadiationFieldsSetup | None = None,
     previous_ionize_box: IonizedBox | None = None,
     perturbed_field: PerturbedField | None = None,
     previous_spin_temp: TsBox | None = None,
@@ -673,7 +642,7 @@ def compute_radiation_fields(
     ----------
     redshift: float
         The redshift at which to compute the radiation fields.
-    radiation_fields_setup: :class:`~RadiationFieldsSetup` or None
+    rad_setup: :class:`~RadiationFieldsSetup` or None
         An object containing the required arrays for computing the radiation fields at this redshift.
     hboxes: Sequence of :class:`~HaloBox` instances
         This contains the list of Halobox instances which are used to create this source field
@@ -693,8 +662,8 @@ def compute_radiation_fields(
         See docs of :func:`initial_conditions` for more information.
     """
     # Setup the radiation fields
-    if radiation_fields_setup is None:
-        radiation_fields_setup = setup_radiation_fields(
+    if rad_setup is None:
+        rad_setup = setup_radiation_fields(
             redshift=redshift,
             hboxes=hboxes,
             previous_spin_temp=previous_spin_temp,
@@ -702,57 +671,25 @@ def compute_radiation_fields(
         need_to_purge = True
     else:
         need_to_purge = False
+        hbox_redshifts = [hb.redshift for hb in hboxes]
+        if hbox_redshifts != rad_setup.hbox_redshifts:
+            raise ValueError(
+                "The redshifts of the input halo boxes do not match those of the input rad_setup!"
+            )
 
-    z_halos = [hb.redshift for hb in hboxes]
-    inputs = hboxes[0].inputs
+    inputs = rad_setup.inputs
 
-    # Initialize halo list boxes.
     radiation_fields = RadiationFields.new(redshift=redshift, inputs=inputs)
+    radiation_fields.Q_HI = rad_setup.Q_HI_zp
 
-    radiation_fields.Q_HI = radiation_fields_setup.Q_HI_zp
-
-    # set minimum R at cell size
-    l_factor = (4 * np.pi / 3.0) ** (-1 / 3)
-    if inputs.simulation_options.HII_DIM == 1:
-        # If HII_DIM=1 (happens when we run_global_evolution), we take a typical cell size of 1.5Mpc,
-        # just to for setting the z'' array (note that filtering won't be done on a box with a single cell)
-        R_min = 1.5 * l_factor
-    else:
-        R_min = (
-            inputs.simulation_options.BOX_LEN
-            / inputs.simulation_options.HII_DIM
-            * l_factor
-        )
-    z_max = min(max(z_halos), inputs.simulation_options.Z_HEAT_MAX)
-
-    # now we need to find the closest halo box to the redshift of the shell
-    cosmo_ap = inputs.cosmo_params.cosmo
-    cmd_zp = cosmo_ap.comoving_distance(redshift)
-    R_steps = np.arange(0, inputs.astro_params.N_STEP_TS)
-    R_factor = (inputs.astro_params.R_MAX_TS / R_min) ** (
-        R_steps / inputs.astro_params.N_STEP_TS
-    )
-    R_range = un.Mpc * R_min * R_factor
-    cmd_edges = cmd_zp + R_range  # comoving distance edges
-    # Get the edges of the shells
-    zmin = z_at_value(cosmo_ap.comoving_distance, cmd_edges.min()).value
-    zmax = z_at_value(cosmo_ap.comoving_distance, cmd_edges.max()).value
-    zgrid = np.logspace(np.log10(zmin), np.log10(zmax), 100)
-    dgrid = cosmo_ap.comoving_distance(zgrid)
-    zpp_edges = np.interp(cmd_edges.value, dgrid.value, zgrid)
-    # the `average` redshift of the shell is the average of the
-    # inner and outer redshifts (following the C code)
-    zpp_avg = zpp_edges - np.diff(np.insert(zpp_edges, 0, redshift)) / 2
-
-    # Initialize the memory, since we may not go through the C code
-    radiation_fields._init_arrays()
+    # set up the shells for the calculation of the radiation field
+    # TODO: Remove this line next commit!
+    R_values, zpp_avg, _ = rad_setup.setup_shells2(inputs=inputs, redshift=redshift)
 
     # Let's figure out if we really need to go through the C code
     sfr_allzero = np.all([np.all(hbox.get("halo_sfr") == 0) for hbox in hboxes])
-    lowest_shell_above_zmax = zpp_avg.min() >= z_max
-    need_c = not (
-        sfr_allzero or lowest_shell_above_zmax or radiation_fields_setup.NO_LIGHT
-    )
+    lowest_shell_above_zmax = zpp_avg.min() >= rad_setup.source_z_max
+    need_c = not (sfr_allzero or lowest_shell_above_zmax or rad_setup.NO_LIGHT)
 
     if need_c:
         # Compute the comoving diffusion scale in the case of Lyman alpha multiple scattering
@@ -794,14 +731,14 @@ def compute_radiation_fields(
         # since the C code expects the smallest shell to be evaluated last.
         # If we had reveresed the order (i.e. going from the smallest to the largest shell), we might have not
         # entered the C code at the last iteration, due to the logic below.
-        # Note that we always enter the C code at the smallest shell, since if z_avg.min would have been larger than z_max,
+        # Note that we always enter the C code at the smallest shell, since if z_avg.min would have been larger than source_z_max,
         # this would have been caught earlier by the need_c logic.
         for i in range(inputs.astro_params.N_STEP_TS)[::-1]:
-            if zpp_avg[i] >= z_max:
+            if zpp_avg[i] >= rad_setup.source_z_max:
                 logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
             else:
-                R_inner = R_range[i - 1].to("Mpc").value if i > 0 else 0
-                R_outer = R_range[i].to("Mpc").value
+                R_inner = R_values[i - 1] if i > 0 else 0
+                R_outer = R_values[i]
                 hbox_interp = interp_halo_boxes(
                     halo_boxes=hboxes[::-1],
                     interp_fields=interp_fields,
@@ -817,20 +754,21 @@ def compute_radiation_fields(
                     R_star=R_star.to("Mpc").value,
                     perturbed_field=perturbed_field,
                     previous_spin_temp=previous_spin_temp,
-                    radiation_fields_setup=radiation_fields_setup,
+                    rad_setup=rad_setup,
                     allow_already_computed=True,
                 )
     else:
         # Sometimes we don't compute at all
-        # (if the first zpp > z_max or there are no halos at max R)
+        # (if the first zpp > source_z_max or there are no halos at max R)
         # in which case the array is not marked as computed
+        radiation_fields._init_arrays()
         for name, array in radiation_fields.arrays.items():
             setattr(radiation_fields, name, array.computed())
 
     if need_to_purge:
         # Purge the radiation fields setup once we have the radiation fields
-        # NOTE: There is a need to purge radiation_fields_setup, since its arrays have been exposed to C
-        radiation_fields_setup.purge(force=True)
+        # NOTE: There is a need to purge rad_setup, since its arrays have been exposed to C
+        rad_setup.purge(force=True)
 
     return radiation_fields
 

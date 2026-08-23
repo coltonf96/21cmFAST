@@ -25,6 +25,7 @@ from typing import Any, Self
 import attrs
 import numpy as np
 from astropy import units as u
+from astropy import units as un
 from astropy.cosmology import z_at_value
 from bidict import bidict
 
@@ -1246,11 +1247,9 @@ class RadiationFieldsSetup(OutputStructZ):
     _c_compute_function = lib.SetupRadiationFields
 
     # R-dependent arrays which are set once
-    zpp_for_evolve_list = _arrayfield()
-    zpp_edge = _arrayfield()
-    dzpp_list = _arrayfield()
-    dtdz_list = _arrayfield()
+    zpp_avg = _arrayfield()
     R_values = _arrayfield()
+    zpp_edges = _arrayfield()
     # Arrays for the filtered emissivity fields
     filtered_sfr = _arrayfield()
     filtered_sfr_mini = _arrayfield(optional=True)
@@ -1283,6 +1282,10 @@ class RadiationFieldsSetup(OutputStructZ):
     x_e_ave_zp: float = attrs.field(default=0.0)
     # boolean to indicate whether there's enough light
     NO_LIGHT: bool = attrs.field(default=True)
+    # maximum source redshift for the radiation fields calculation
+    source_z_max: float = attrs.field(default=0.0)
+    # redshifts of the input hboxes
+    hbox_redshifts: list[float] = attrs.field(factory=list)
 
     @classmethod
     def new(cls, inputs: InputParameters, redshift: float, **kw) -> Self:
@@ -1309,13 +1312,9 @@ class RadiationFieldsSetup(OutputStructZ):
         )
 
         out = {
-            "zpp_for_evolve_list": Array(
-                (inputs.astro_params.N_STEP_TS,), dtype=np.float64
-            ),
-            "zpp_edge": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
-            "dzpp_list": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
-            "dtdz_list": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
             "R_values": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
+            "zpp_avg": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
+            "zpp_edges": Array((inputs.astro_params.N_STEP_TS,), dtype=np.float64),
             "freq_int_heat_tbl": Array(
                 (x_int_NXHII, inputs.astro_params.N_STEP_TS), dtype=np.float64
             ),
@@ -1389,6 +1388,104 @@ class RadiationFieldsSetup(OutputStructZ):
             **out,
             **kw,
         )
+
+    def setup_shells(
+        self,
+        inputs: InputParameters,
+        redshift: float,
+    ) -> Self:
+        """
+        Set up shells information for a given redshift.
+
+        Parameters
+        ----------
+        inputs : InputParameters
+            The input parameters specifying the run.
+        redshift : float
+            The redshift at which to compute the radiation fields.
+        """
+        # set minimum R at cell size
+        l_factor = (4 * np.pi / 3.0) ** (-1 / 3)
+        if inputs.simulation_options.HII_DIM == 1:
+            # If HII_DIM=1 (happens when we run_global_evolution), we take a typical cell size of 1.5Mpc,
+            # just to for setting the z'' array (note that filtering won't be done on a box with a single cell)
+            R_min = 1.5 * l_factor
+        else:
+            R_min = (
+                inputs.simulation_options.BOX_LEN
+                / inputs.simulation_options.HII_DIM
+                * l_factor
+            )
+        # now we need to find the closest halo box to the redshift of the shell
+        cosmo_ap = inputs.cosmo_params.cosmo
+        cmd_zp = cosmo_ap.comoving_distance(redshift)
+        R_steps = np.arange(0, inputs.astro_params.N_STEP_TS)
+        R_factor = (inputs.astro_params.R_MAX_TS / R_min) ** (
+            R_steps / inputs.astro_params.N_STEP_TS
+        )
+        self.set("R_values", R_min * R_factor)
+        cmd_edges = cmd_zp + self.R_values.value * un.Mpc  # comoving distance edges
+        # Get the edges of the shells
+        zmin = z_at_value(cosmo_ap.comoving_distance, cmd_edges.min()).value
+        zmax = z_at_value(cosmo_ap.comoving_distance, cmd_edges.max()).value
+        zgrid = np.logspace(np.log10(zmin), np.log10(zmax), 100)
+        dgrid = cosmo_ap.comoving_distance(zgrid)
+        self.set("zpp_edges", np.interp(cmd_edges.value, dgrid.value, zgrid))
+        # the `average` redshift of the shell is the average of the
+        # inner and outer redshifts (following the C code)
+        self.set(
+            "zpp_avg",
+            self.zpp_edges.value
+            - np.diff(np.insert(self.zpp_edges.value, 0, redshift)) / 2,
+        )
+        return self
+
+    @staticmethod
+    def setup_shells2(
+        inputs: InputParameters,
+        redshift: float,
+    ) -> tuple:
+        """
+        Set up shells information for a given redshift.
+
+        Parameters
+        ----------
+        inputs : InputParameters
+            The input parameters specifying the run.
+        redshift : float
+            The redshift at which to compute the radiation fields.
+        """
+        # set minimum R at cell size
+        l_factor = (4 * np.pi / 3.0) ** (-1 / 3)
+        if inputs.simulation_options.HII_DIM == 1:
+            # If HII_DIM=1 (happens when we run_global_evolution), we take a typical cell size of 1.5Mpc,
+            # just to for setting the z'' array (note that filtering won't be done on a box with a single cell)
+            R_min = 1.5 * l_factor
+        else:
+            R_min = (
+                inputs.simulation_options.BOX_LEN
+                / inputs.simulation_options.HII_DIM
+                * l_factor
+            )
+        # now we need to find the closest halo box to the redshift of the shell
+        cosmo_ap = inputs.cosmo_params.cosmo
+        cmd_zp = cosmo_ap.comoving_distance(redshift)
+        R_steps = np.arange(0, inputs.astro_params.N_STEP_TS)
+        R_factor = (inputs.astro_params.R_MAX_TS / R_min) ** (
+            R_steps / inputs.astro_params.N_STEP_TS
+        )
+        R_values = R_min * R_factor
+        cmd_edges = cmd_zp + R_values * un.Mpc  # comoving distance edges
+        # Get the edges of the shells
+        zmin = z_at_value(cosmo_ap.comoving_distance, cmd_edges.min()).value
+        zmax = z_at_value(cosmo_ap.comoving_distance, cmd_edges.max()).value
+        zgrid = np.logspace(np.log10(zmin), np.log10(zmax), 100)
+        dgrid = cosmo_ap.comoving_distance(zgrid)
+        zpp_edges = np.interp(cmd_edges.value, dgrid.value, zgrid)
+        # the `average` redshift of the shell is the average of the
+        # inner and outer redshifts (following the C code)
+        zpp_avg = zpp_edges - np.diff(np.insert(zpp_edges, 0, redshift)) / 2
+        return R_values, zpp_avg, zpp_edges
 
     def get_required_input_arrays(self, input_box: OutputStruct) -> list[str]:
         """Return all input arrays required to compute this object."""
@@ -1493,11 +1590,9 @@ class RadiationFields(OutputStructZ):
                 required += ["halo_sfr_mini"]
         elif isinstance(input_box, RadiationFieldsSetup):
             required += [
-                "zpp_for_evolve_list",
-                "zpp_edge",
-                "dzpp_list",
-                "dtdz_list",
                 "R_values",
+                "zpp_avg",
+                "zpp_edges",
                 "freq_int_heat_tbl",
                 "freq_int_ion_tbl",
                 "freq_int_lya_tbl",
@@ -1553,7 +1648,7 @@ class RadiationFields(OutputStructZ):
         R_star,
         perturbed_field: PerturbedField,
         previous_spin_temp: TsBox,
-        radiation_fields_setup: RadiationFieldsSetup,
+        rad_setup: RadiationFieldsSetup,
         allow_already_computed: bool = False,
     ):
         """Compute the function."""
@@ -1567,7 +1662,7 @@ class RadiationFields(OutputStructZ):
             R_star,
             perturbed_field,
             previous_spin_temp,
-            radiation_fields_setup,
+            rad_setup,
         )
 
 

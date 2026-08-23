@@ -66,7 +66,7 @@ typedef struct HaloBox {
 
 typedef struct RadiationFieldsSetup {
     // R-dependent arrays which are set once
-    double *R_values, *dzpp_list, *dtdz_list, *zpp_for_evolve_list, *zpp_edge;
+    double *R_values, *zpp_avg, *zpp_edges;
 
     // Arrays for the filtered emissivity fields
     float *filtered_sfr;
