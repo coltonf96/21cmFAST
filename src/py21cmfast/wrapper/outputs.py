@@ -1440,53 +1440,6 @@ class RadiationFieldsSetup(OutputStructZ):
         )
         return self
 
-    @staticmethod
-    def setup_shells2(
-        inputs: InputParameters,
-        redshift: float,
-    ) -> tuple:
-        """
-        Set up shells information for a given redshift.
-
-        Parameters
-        ----------
-        inputs : InputParameters
-            The input parameters specifying the run.
-        redshift : float
-            The redshift at which to compute the radiation fields.
-        """
-        # set minimum R at cell size
-        l_factor = (4 * np.pi / 3.0) ** (-1 / 3)
-        if inputs.simulation_options.HII_DIM == 1:
-            # If HII_DIM=1 (happens when we run_global_evolution), we take a typical cell size of 1.5Mpc,
-            # just to for setting the z'' array (note that filtering won't be done on a box with a single cell)
-            R_min = 1.5 * l_factor
-        else:
-            R_min = (
-                inputs.simulation_options.BOX_LEN
-                / inputs.simulation_options.HII_DIM
-                * l_factor
-            )
-        # now we need to find the closest halo box to the redshift of the shell
-        cosmo_ap = inputs.cosmo_params.cosmo
-        cmd_zp = cosmo_ap.comoving_distance(redshift)
-        R_steps = np.arange(0, inputs.astro_params.N_STEP_TS)
-        R_factor = (inputs.astro_params.R_MAX_TS / R_min) ** (
-            R_steps / inputs.astro_params.N_STEP_TS
-        )
-        R_values = R_min * R_factor
-        cmd_edges = cmd_zp + R_values * un.Mpc  # comoving distance edges
-        # Get the edges of the shells
-        zmin = z_at_value(cosmo_ap.comoving_distance, cmd_edges.min()).value
-        zmax = z_at_value(cosmo_ap.comoving_distance, cmd_edges.max()).value
-        zgrid = np.logspace(np.log10(zmin), np.log10(zmax), 100)
-        dgrid = cosmo_ap.comoving_distance(zgrid)
-        zpp_edges = np.interp(cmd_edges.value, dgrid.value, zgrid)
-        # the `average` redshift of the shell is the average of the
-        # inner and outer redshifts (following the C code)
-        zpp_avg = zpp_edges - np.diff(np.insert(zpp_edges, 0, redshift)) / 2
-        return R_values, zpp_avg, zpp_edges
-
     def get_required_input_arrays(self, input_box: OutputStruct) -> list[str]:
         """Return all input arrays required to compute this object."""
         required = []

@@ -15,6 +15,9 @@ Module for setting up the radiation fields in 21cmFAST.
 #include "logger.h"
 
 // This function should construct all the tables which depend on R
+// TODO: This function is a dead code because we now do the initialization of the R-dependent arrays
+// in setup_shells in python. I still leave it here because maybe we will change our mind in the
+// future and we would perfer instead to make the initializations in C
 void setup_z_edges(double zp, RadiationFieldsSetup *rad_setup) {
     double R, R_factor;
     double prev_zpp, prev_R;
@@ -32,7 +35,7 @@ void setup_z_edges(double zp, RadiationFieldsSetup *rad_setup) {
     R_factor = pow(astro_params_global->R_MAX_TS / R, 1 / ((float)astro_params_global->N_STEP_TS));
 
     for (R_ct = 0; R_ct < astro_params_global->N_STEP_TS; R_ct++) {
-        // rad_setup->R_values[R_ct] = R;
+        rad_setup->R_values[R_ct] = R;
         if (R_ct == 0) {
             prev_zpp = zp;
             prev_R = 0;
@@ -297,7 +300,6 @@ int global_reion_properties(double zp, RadiationFieldsSetup *rad_setup) {
 
     if (uses_hmf_interpolation(matter_options_global->USE_INTERPOLATION_TABLES)) {
         determine_zpp_min = zp * 0.999;
-        // NOTE: must be called after setup_z_edges for this line
         determine_zpp_max = rad_setup->zpp_avg[astro_params_global->N_STEP_TS - 1] * 1.001;
 
         // We need the tables for the frequency integrals & mean fixing
@@ -365,9 +367,6 @@ int SetupRadiationFields(float redshift, TsBox *previous_spin_temp,
     int status;
     Try {  // This Try{} wraps the whole function.
         index_huge box_ct;
-
-        // setup the R_ct 1D arrays
-        setup_z_edges(redshift, rad_setup);
 
         calculate_spectral_factors(redshift, rad_setup);
 

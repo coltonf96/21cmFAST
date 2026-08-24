@@ -682,13 +682,9 @@ def compute_radiation_fields(
     radiation_fields = RadiationFields.new(redshift=redshift, inputs=inputs)
     radiation_fields.Q_HI = rad_setup.Q_HI_zp
 
-    # set up the shells for the calculation of the radiation field
-    # TODO: Remove this line next commit!
-    R_values, zpp_avg, _ = rad_setup.setup_shells2(inputs=inputs, redshift=redshift)
-
     # Let's figure out if we really need to go through the C code
     sfr_allzero = np.all([np.all(hbox.get("halo_sfr") == 0) for hbox in hboxes])
-    lowest_shell_above_zmax = zpp_avg.min() >= rad_setup.source_z_max
+    lowest_shell_above_zmax = rad_setup.zpp_avg.value.min() >= rad_setup.source_z_max
     need_c = not (sfr_allzero or lowest_shell_above_zmax or rad_setup.NO_LIGHT)
 
     if need_c:
@@ -734,15 +730,15 @@ def compute_radiation_fields(
         # Note that we always enter the C code at the smallest shell, since if z_avg.min would have been larger than source_z_max,
         # this would have been caught earlier by the need_c logic.
         for i in range(inputs.astro_params.N_STEP_TS)[::-1]:
-            if zpp_avg[i] >= rad_setup.source_z_max:
+            if rad_setup.zpp_avg.value[i] >= rad_setup.source_z_max:
                 logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
             else:
-                R_inner = R_values[i - 1] if i > 0 else 0
-                R_outer = R_values[i]
+                R_inner = rad_setup.R_values.value[i - 1] if i > 0 else 0
+                R_outer = rad_setup.R_values.value[i]
                 hbox_interp = interp_halo_boxes(
                     halo_boxes=hboxes[::-1],
                     interp_fields=interp_fields,
-                    redshift=zpp_avg[i],
+                    redshift=rad_setup.zpp_avg.value[i],
                     need_c=True,
                 )
                 radiation_fields = radiation_fields.compute(
