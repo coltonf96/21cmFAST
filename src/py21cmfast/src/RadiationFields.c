@@ -240,8 +240,9 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
             }
         }
     }
-    // No need to filter the box if we only have one cell!
-    if (simulation_options_global->HII_DIM > 1) {
+    // No need to filter the box if we only have one cell, or if we are the cell scale (corrsponds
+    // to R_inner = 0, based on the logic in UpdateRadiationFields)
+    if (simulation_options_global->HII_DIM > 1 && R_inner > 0) {
         // Transform unfiltered box to k-space to prepare for filtering
         // this would normally only be done once but we're using a different redshift for each R now
         dft_r2c_cube(matter_options_global->USE_FFTW_WISDOM, simulation_options_global->HII_DIM,
@@ -258,9 +259,7 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
         }
 
         // Don't filter on the cell scale
-        if (R_inner > 0) {
-            filter_box(dummy_box, box_dim, filter_type, R_inner, R_outer, R_star);
-        }
+        filter_box(dummy_box, box_dim, filter_type, R_inner, R_outer, R_star);
 
         // now fft back to real space
         dft_c2r_cube(matter_options_global->USE_FFTW_WISDOM, simulation_options_global->HII_DIM,
@@ -298,10 +297,9 @@ void one_annular_filter(float *input_box, float *output_box, double R_inner, dou
     fftwf_free(dummy_box);
 }
 
-int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, double R_outer,
-                          int R_ct, double R_star, PerturbedField *perturbed_field,
-                          TsBox *previous_spin_temp, RadiationFieldsSetup *rad_setup,
-                          RadiationFields *radiation_fields) {
+int UpdateRadiationFields(float redshift, HaloBox *halobox, int R_ct, double R_star,
+                          PerturbedField *perturbed_field, TsBox *previous_spin_temp,
+                          RadiationFieldsSetup *rad_setup, RadiationFields *radiation_fields) {
     int status;
     Try {  // This Try{} wraps the whole function.
         // NOTE: we assume that the first iteration corresponds to the largest shell.
@@ -314,6 +312,9 @@ int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, doub
         int filter_type = astro_options_global->LYA_MULTIPLE_SCATTERING
                               ? FILTER_SPHERICAL_SHELL_MULTIPLE_SCATTERING
                               : FILTER_SPHERICAL_SHELL_STRAIGHT_LINE;
+
+        double R_inner = R_ct == 0 ? 0 : rad_setup->R_values[R_ct - 1];
+        double R_outer = rad_setup->R_values[R_ct];
 
         one_annular_filter(halobox->halo_sfr, rad_setup->filtered_sfr, R_inner, R_outer, R_star,
                            filter_type, &sfr_avg, &fsfr_avg);

@@ -35,10 +35,9 @@ int ComputeHaloBox(double redshift, InitialConditions *ini_boxes, PerturbedField
 int SetupRadiationFields(float redshift, TsBox *previous_spin_temp,
                          RadiationFieldsSetup *rad_setup);
 
-int UpdateRadiationFields(float redshift, HaloBox *halobox, double R_inner, double R_outer,
-                          int R_ct, double R_star, PerturbedField *perturbed_field,
-                          TsBox *previous_spin_temp, RadiationFieldsSetup *rad_setup,
-                          RadiationFields *radiation_fields);
+int UpdateRadiationFields(float redshift, HaloBox *halobox, int R_ct, double R_star,
+                          PerturbedField *perturbed_field, TsBox *previous_spin_temp,
+                          RadiationFieldsSetup *rad_setup, RadiationFields *radiation_fields);
 /*--------------------------*/
 
 /* PHOTON CONSERVATION MODEL FUNCTIONS */

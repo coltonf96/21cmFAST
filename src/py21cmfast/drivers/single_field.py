@@ -733,8 +733,6 @@ def compute_radiation_fields(
             if rad_setup.zpp_avg.value[i] >= rad_setup.source_z_max:
                 logger.debug(f"ignoring Radius {i} which is above Z_HEAT_MAX")
             else:
-                R_inner = rad_setup.R_values.value[i - 1] if i > 0 else 0
-                R_outer = rad_setup.R_values.value[i]
                 hbox_interp = interp_halo_boxes(
                     halo_boxes=hboxes[::-1],
                     interp_fields=interp_fields,
@@ -744,8 +742,6 @@ def compute_radiation_fields(
                 radiation_fields = radiation_fields.compute(
                     redshift=redshift,
                     halobox=hbox_interp,
-                    R_inner=R_inner,
-                    R_outer=R_outer,
                     R_ct=i,
                     R_star=R_star.to("Mpc").value,
                     perturbed_field=perturbed_field,
