@@ -24,7 +24,6 @@ from typing import Any, Self
 
 import attrs
 import numpy as np
-from astropy import units as u
 from astropy import units as un
 from astropy.cosmology import z_at_value
 from bidict import bidict
@@ -1217,7 +1216,7 @@ class HaloBox(OutputStructZ):
             # find maximum z
             d_max_needed = (
                 self.cosmo_params.cosmo.comoving_distance(next_z)
-                + self.astro_params.R_MAX_TS * u.Mpc
+                + self.astro_params.R_MAX_TS * un.Mpc
             )
             max_z_needed = z_at_value(
                 self.cosmo_params.cosmo.comoving_distance, d_max_needed
