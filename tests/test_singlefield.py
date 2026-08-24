@@ -20,6 +20,7 @@ from py21cmfast import (
     PerturbedField,
     TsBox,
 )
+from py21cmfast.drivers.single_field import setup_radiation_fields
 from py21cmfast.wrapper.arrays import Array
 
 
@@ -473,7 +474,7 @@ def test_global_properties(
     assert bt.global_Tb == np.mean(bt.get("brightness_temp"))
 
 
-def test_bad_input_structs(default_input_struct_ts):
+def test_bad_input_structs(default_input_struct_ts, spin_temp_evolution):
     """Test that we raise errors when required input structs are omitted."""
     # setting parameters for the maximum number of fields required
     test_inputs = default_input_struct_ts.evolve_input_structs(
@@ -612,6 +613,26 @@ def test_bad_input_structs(default_input_struct_ts):
             previous_perturbed_field=pt_p,
             halobox=hb,
             previous_ionized_box=ib_p,
+        )
+
+    prev_st = spin_temp_evolution[-2]["spin_temp"]
+    hb1 = spin_temp_evolution[-1]["halo_box"]
+    hb2 = spin_temp_evolution[-2]["halo_box"]
+    hb3 = spin_temp_evolution[-3]["halo_box"]
+
+    rad_setup = setup_radiation_fields(
+        redshift=default_input_struct_ts.node_redshifts[-1],
+        previous_spin_temp=prev_st,
+        hboxes=[hb1, hb2],
+    )
+    with pytest.raises(
+        ValueError,
+        match="The redshifts of the input halo boxes do not match those of the input rad_setup!",
+    ):
+        p21c.compute_radiation_fields(
+            hboxes=[hb1, hb3],
+            redshift=default_input_struct_ts.node_redshifts[-1],
+            rad_setup=rad_setup,
         )
 
 
