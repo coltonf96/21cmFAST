@@ -1913,7 +1913,7 @@ class InputParameters:
                     y_values=transfer_density,
                 )
             else:  #If providing your own transfer function, simply load it in
-                transfer_density = np.loadtxt(POWER_SPECTRUM_FILE)  #File should be two columns, k and T(k)
+                transfer_deensity = np.loadtxt(POWER_SPECTRUM_FILE)  #File should be two columns, k and T(k)
 
             # Find the redshift of kinematic decoupling
             z_dec = find_redshift_kinematic_decoupling(classy_output)
