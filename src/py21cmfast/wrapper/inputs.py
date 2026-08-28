@@ -360,7 +360,7 @@ class CosmoTables:
 
     Attributes
     ----------
-    transfer_density : Table1D | None
+    transfer_density : Table1D | None 
         Interpolation table for the density transfer function.
         In InputParameters, becomes non-trivial only if MatterOptions.POWER_SPECTRUM is set to "CLASS".
     transfer_vcb : Table1D | None
