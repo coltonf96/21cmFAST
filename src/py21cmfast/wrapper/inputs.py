@@ -360,7 +360,7 @@ class CosmoTables:
 
     Attributes
     ----------
-    transfer_density : Table1D | None 
+    transfer_density : Table1D | None
         Interpolation table for the density transfer function.
         In InputParameters, becomes non-trivial only if MatterOptions.POWER_SPECTRUM is set to "CLASS".
     transfer_vcb : Table1D | None
@@ -771,10 +771,10 @@ class MatterOptions(InputStruct):
         default=None, converter=attrs.converters.optional(bool)
     )
     V_CB_MODEL: Literal["NONE", "AVG-AUTO", "FLUCTS", "AVG-DEBUG"] = choice_field()
-    POWER_SPECTRUM: Literal["EH", "BBKS", "EFSTATHIOU", "PEEBLES", "WHITE", "CLASS", "FILE"] = (
-        choice_field()
-    )
-    POWER_SPECTRUM_FILE: Path | None=None
+    POWER_SPECTRUM: Literal[
+        "EH", "BBKS", "EFSTATHIOU", "PEEBLES", "WHITE", "CLASS", "FILE"
+    ] = choice_field()
+    POWER_SPECTRUM_FILE: Path | None = None
     PERTURB_ON_HIGH_RES: bool = field(default=False, converter=bool)
     USE_INTERPOLATION_TABLES: Literal[
         "no-interpolation", "sigma-interpolation", "hmf-interpolation"
@@ -1864,7 +1864,10 @@ class InputParameters:
         """Cosmological tables and constants derived from fundamental input parameters."""
         V_CB_AVG = V_CB_AVG_DEFAULT
 
-        if self.matter_options.POWER_SPECTRUM == "CLASS" or self.matter_options.POWER_SPECTRUM == "FILE":
+        if (
+            self.matter_options.POWER_SPECTRUM == "CLASS"
+            or self.matter_options.POWER_SPECTRUM == "FILE"
+        ):
             if self.simulation_options.K_MAX_FOR_CLASS is not None:
                 k_max = self.simulation_options.K_MAX_FOR_CLASS / un.Mpc
             else:
@@ -1887,8 +1890,7 @@ class InputParameters:
                     "1/Mpc"
                 ) * 1.5  # Multiply by 1.5 for better precision
 
-            if self.matter_options.POWER_SPECTRUM == "CLASS"
-
+            if self.matter_options.POWER_SPECTRUM == "CLASS":
                 classy_output = run_classy(
                     h=self.cosmo_params.hlittle,
                     Omega_cdm=self.cosmo_params.OMm - self.cosmo_params.OMb,
@@ -1912,8 +1914,10 @@ class InputParameters:
                     x_values=k_transfer_with_0,
                     y_values=transfer_density,
                 )
-            else:  #If providing your own transfer function, simply load it in
-                transfer_deensity = np.loadtxt(POWER_SPECTRUM_FILE)  #File should be two columns, k and T(k)
+            else:  # If providing your own transfer function, simply load it in
+                transfer_density = np.loadtxt(
+                    self.POWER_SPECTRUM_FILE
+                )  # File should be two columns, k and T(k)
 
             # Find the redshift of kinematic decoupling
             z_dec = find_redshift_kinematic_decoupling(classy_output)
