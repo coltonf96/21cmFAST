@@ -808,7 +808,7 @@ class MatterOptions(InputStruct):
 
     @POWER_SPECTRUM.validator
     def _POWER_SPECTRUM_vld(self, att, val):
-        if self.V_CB_MODEL == "FLUCTS" and val != "CLASS":
+        if self.V_CB_MODEL == "FLUCTS" and (val != "CLASS" or val != "FILE"):
             raise ValueError(
                 "When using V_CB_MODEL='FLUCTS', you must use POWER_SPECTRUM = 'CLASS'! "
                 "Please set POWER_SPECTRUM to 'CLASS' or change V_CB_MODEL to something else."
