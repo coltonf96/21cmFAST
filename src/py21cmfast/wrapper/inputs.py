@@ -1921,7 +1921,6 @@ class InputParameters:
 
             # Find the redshift of kinematic decoupling
             z_dec = find_redshift_kinematic_decoupling(classy_output)
-            warnings.warn(f"Redshift of kinematic decoupling: {z_dec}", stacklevel=2)
 
             # If we use the fluctuations of the v_cb field, find its transfer function at the redshift of kinematic decoupling
             if self.matter_options.V_CB_MODEL == "FLUCTS":
@@ -2069,7 +2068,8 @@ class InputParameters:
             warnings.warn(
                 "Your model (either SOURCE_MODEL=='CONST-ION-EFF' or INTEGRATION_METHOD_X=='GAMMA-APPROX')"
                 "uses the EPS conditional mass function normalised to the unconditional mass"
-                "function provided by the user as matter_options.HMF",
+                "function provided by the user as matter_options.HMF"
+                "Redshift of kinematic decoupling: {z_dec}",
                 stacklevel=2,
             )
 
