@@ -808,7 +808,7 @@ class MatterOptions(InputStruct):
 
     @POWER_SPECTRUM.validator
     def _POWER_SPECTRUM_vld(self, att, val):
-        if self.V_CB_MODEL == "FLUCTS" and (val != "CLASS" or val != "FILE"):
+        if self.V_CB_MODEL == "FLUCTS" and (val != "CLASS" and val != "FILE"):
             raise ValueError(
                 "When using V_CB_MODEL='FLUCTS', you must use POWER_SPECTRUM = 'CLASS'! "
                 "Please set POWER_SPECTRUM to 'CLASS' or change V_CB_MODEL to something else."
@@ -1916,7 +1916,7 @@ class InputParameters:
                 )
             else:  # If providing your own transfer function, simply load it in
                 transfer_density = np.loadtxt(
-                    self.POWER_SPECTRUM_FILE
+                    self.matter_options.POWER_SPECTRUM_FILE
                 )  # File should be two columns, k and T(k)
 
             # Find the redshift of kinematic decoupling
